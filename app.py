@@ -1,41 +1,56 @@
+import os
+import sqlite3
+import hashlib
+import requests
+import urllib3
+from datetime import datetime
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
-from apscheduler.schedulers.background import BackgroundScheduler
-import requests
 from bs4 import BeautifulSoup
-import sqlite3
-import json
-import hashlib
-import time
-from datetime import datetime
-import threading
-import os
-import urllib3
-import random
+from apscheduler.schedulers.background import BackgroundScheduler
+import warnings
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'tesla_stok_takip_secret_key'
+app.config['SECRET_KEY'] = 'tesla-stok-takip-secret-key'
+
+# SocketIO setup
 socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
-# Tesla Model Y URL - Try different URLs if one fails
+# Global variables
+last_check_time = None
+last_status = "Unknown"
+
+# Tesla URLs to try
 TESLA_URLS = [
-    "https://www.tesla.com/tr_TR/modely/design#overview",
-    "https://www.tesla.com/tr_tr/model-y/design",
-    "https://www.tesla.com/tr_TR/modely",
-    "https://www.tesla.com/tr_tr/modely",
-    "https://www.tesla.com/tr_TR/model-y",
-    "https://www.tesla.com/tr_tr/modely/design",
-    "https://www.tesla.com/tr_TR/model-y/design",
-    "https://www.tesla.com/tr_tr/modely/design#overview",
-    "https://www.tesla.com/tr_TR/modely/design#overview",
-    "https://www.tesla.com/tr_tr/model-y/design#overview"
+    'https://www.tesla.com/tr_TR/modely/design#overview',
+    'https://www.tesla.com/tr_tr/model-y/design',
+    'https://www.tesla.com/tr_TR/modely',
+    'https://www.tesla.com/tr_tr/modely',
+    'https://www.tesla.com/tr_TR/model-y',
+    'https://www.tesla.com/tr_tr/modely/design',
+    'https://www.tesla.com/tr_TR/model-y/design',
+    'https://www.tesla.com/tr_tr/modely/design#overview',
+    'https://www.tesla.com/tr_TR/modely/design#overview',
+    'https://www.tesla.com/tr_tr/modely/design#overview'
 ]
 
-# Test mode - when Tesla website is unreachable
-TEST_MODE = False
+# Headers for requests
+HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Cache-Control': 'no-cache'
+}
 
 # Database setup
 def init_db():
@@ -215,27 +230,18 @@ def perform_check():
     try:
         print(f"Checking Tesla page at {datetime.now()}")
         
-        # Try multiple Tesla URLs
-        content = None
-        for url in TESLA_URLS:
-            try:
-                response = requests.get(url, headers=HEADERS, timeout=30, verify=False)
-                if response.status_code == 200:
-                    content = response.text
-                    print(f"Successfully fetched content from {url}")
-                    break
-                else:
-                    print(f"Failed to fetch {url}, status code: {response.status_code}")
-            except Exception as e:
-                print(f"Error fetching {url}: {e}")
-                continue
+        # Get page content
+        content = get_page_content()
         
         if not content:
-            print("Could not fetch content from any Tesla URL")
-            return
+            print("Could not fetch content from Tesla page")
+            return None
         
         # Analyze content
         has_order_button, has_availability = analyze_content(content)
+        
+        # Save snapshot
+        save_snapshot(content, has_order_button, has_availability)
         
         # Determine status
         if has_order_button and has_availability:
@@ -283,11 +289,11 @@ def check_for_changes():
                 ORDER BY timestamp DESC 
                 LIMIT 1
             ''')
-            result = cursor.fetchone()
+            db_result = cursor.fetchone()
             conn.close()
             
-            if result:
-                timestamp, has_order_button, has_availability = result
+            if db_result:
+                timestamp, has_order_button, has_availability = db_result
                 socketio.emit('status_update', {
                     'timestamp': datetime.now().isoformat(),
                     'status': 'last_known',
@@ -302,20 +308,16 @@ def check_for_changes():
             socketio.emit('status_update', {
                 'timestamp': datetime.now().isoformat(),
                 'status': result,
-                'message': f'Tesla Model Y stok durumu güncellendi!',
-                'has_order_button': has_order_button,
-                'has_availability': has_availability
+                'message': f'Tesla Model Y stok durumu güncellendi!'
             })
             print(f"Status changed: {result}")
         else:
             # No changes but successful check
-            socketio.emit('status_update', {
-                'timestamp': datetime.now().isoformat(),
+            socketio.emit('check_complete', {
                 'status': 'no_changes',
-                'message': 'Kontrol tamamlandı - Değişiklik yok',
-                'has_order_button': has_order_button,
-                'has_availability': has_availability
+                'message': 'Kontrol tamamlandı - Değişiklik yok'
             })
+            print("Check completed - No changes")
         
     except Exception as e:
         print(f"Error in check_for_changes: {e}")
