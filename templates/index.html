@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tesla Model Y Stok Takip Sistemi</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-car"></i>
+                    <h1>Tesla Model Y Monitor</h1>
+                </div>
+                <div class="status-indicator">
+                    <div class="status-dot" id="statusDot"></div>
+                    <span id="statusText">Bağlanıyor...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Current Status Card -->
+            <div class="card status-card">
+                <div class="card-header">
+                    <h2><i class="fas fa-info-circle"></i> Mevcut Durum</h2>
+                </div>
+                <div class="card-body">
+                    <div class="status-grid">
+                        <div class="status-item">
+                            <div class="status-icon order-status" id="orderStatusIcon">
+                                <i class="fas fa-shopping-cart"></i>
+                            </div>
+                            <div class="status-info">
+                                <h3>Sipariş Durumu</h3>
+                                <p id="orderStatus">Kontrol ediliyor...</p>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-icon stock-status" id="stockStatusIcon">
+                                <i class="fas fa-boxes"></i>
+                            </div>
+                            <div class="status-info">
+                                <h3>Stok Durumu</h3>
+                                <p id="stockStatus">Kontrol ediliyor...</p>
+                            </div>
+                        </div>
+                        <div class="status-item">
+                            <div class="status-icon time-status">
+                                <i class="fas fa-clock"></i>
+                            </div>
+                            <div class="status-info">
+                                <h3>Son Kontrol</h3>
+                                <p id="lastCheck">-</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Monitoring Controls -->
+            <div class="card controls-card">
+                <div class="card-header">
+                    <h2><i class="fas fa-cog"></i> Kontrol Paneli</h2>
+                </div>
+                <div class="card-body">
+                    <div class="controls-grid">
+                        <button class="btn btn-primary" id="manualCheck">
+                            <i class="fas fa-sync-alt"></i> Manuel Kontrol
+                        </button>
+                        <button class="btn btn-secondary" id="toggleSound">
+                            <i class="fas fa-volume-up"></i> Ses Açık
+                        </button>
+                        <button class="btn btn-info" id="openTesla">
+                            <i class="fas fa-external-link-alt"></i> Tesla Sayfasını Aç
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notifications -->
+            <div class="card notifications-card">
+                <div class="card-header">
+                    <h2><i class="fas fa-bell"></i> Bildirimler</h2>
+                    <button class="btn btn-sm btn-clear" id="clearNotifications">
+                        <i class="fas fa-trash"></i> Temizle
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div class="notifications-list" id="notificationsList">
+                        <div class="notification-item info">
+                            <i class="fas fa-info-circle"></i>
+                            <span>Sistem başlatıldı. Tesla Model Y sayfası takip ediliyor...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- History Chart -->
+            <div class="card history-card">
+                <div class="card-header">
+                    <h2><i class="fas fa-chart-line"></i> Takip Geçmişi</h2>
+                </div>
+                <div class="card-body">
+                    <div class="history-chart" id="historyChart">
+                        <div class="chart-placeholder">
+                            <i class="fas fa-chart-line"></i>
+                            <p>Veri toplanıyor...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Audio for notifications -->
+    <audio id="notificationSound" preload="auto">
+        <source src="data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUarm7blmGgU7k9n1unEiBC13yO/eizEIHWq+8+OWT" type="audio/wav">
+    </audio>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html> 
