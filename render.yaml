@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: tesla-stok-takip
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class sync --timeout 120 app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.16
+      - key: RENDER
+        value: true
+      - key: GUNICORN_CMD_ARGS
+        value: "--worker-class=sync --workers=1 --timeout=120"
+    autoDeploy: true 

@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tesla Model Y Stok Takip - Local</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .header {
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .status-card {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            border-left: 5px solid #667eea;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .status-label {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .status-value {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.9em;
+        }
+
+        .status-true {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status-false {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status-unknown {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .status-mock {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+
+        .connection-status {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 0.9em;
+            color: #856404;
+        }
+
+        .connection-status.connected {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+
+        .connection-status.error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+
+        .data-source {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 10px;
+            padding: 5px 10px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            display: inline-block;
+        }
+
+        .last-check {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 15px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        .loading {
+            display: none;
+            margin: 20px 0;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .alert {
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: none;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+
+        .info-box h3 {
+            color: #0066cc;
+            margin-bottom: 10px;
+        }
+
+        .info-box p {
+            color: #333;
+            line-height: 1.6;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+                margin: 10px;
+            }
+
+            .header h1 {
+                font-size: 2em;
+            }
+
+            .controls {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚗 Tesla Model Y Stok Takip</h1>
+            <p>Local Çalışma Modu - Gerçek Zamanlı Takip</p>
+        </div>
+
+        <div class="info-box">
+            <h3>ℹ️ Local Çalışma Modu</h3>
+            <p>Bu uygulama şu anda <strong>sadece local bilgisayarınızda</strong> çalışmaktadır. Tesla sitesine bağlanamadığında demo veriler gösterilir.</p>
+        </div>
+
+        <div class="status-card">
+            <h2>📊 Mevcut Durum</h2>
+            
+            <div class="status-item">
+                <span class="status-label">🛒 Sipariş Butonu:</span>
+                <span class="status-value status-unknown" id="orderButtonStatus">Kontrol ediliyor...</span>
+            </div>
+            
+            <div class="status-item">
+                <span class="status-label">📦 Stok Durumu:</span>
+                <span class="status-value status-unknown" id="availabilityStatus">Kontrol ediliyor...</span>
+            </div>
+            
+            <div class="connection-status" id="connectionStatus">
+                Bağlantı durumu kontrol ediliyor...
+            </div>
+            
+            <div class="data-source" id="dataSource">
+                Veri kaynağı: Kontrol ediliyor...
+            </div>
+            
+            <div class="last-check" id="lastCheckTime">
+                Son kontrol: Henüz yapılmadı
+            </div>
+        </div>
+
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Tesla sitesi kontrol ediliyor...</p>
+        </div>
+
+        <div class="alert" id="alert"></div>
+
+        <div class="controls">
+            <button class="btn btn-primary" onclick="manualCheck()">
+                🔄 Manuel Kontrol
+            </button>
+            <button class="btn btn-secondary" onclick="refreshStatus()">
+                📊 Durumu Yenile
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let checkInterval;
+
+        // Sayfa yüklendiğinde başlat
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshStatus();
+            // Her 30 saniyede bir durumu güncelle
+            checkInterval = setInterval(refreshStatus, 30000);
+        });
+
+        async function refreshStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                updateStatusDisplay(data);
+            } catch (error) {
+                console.error('Durum alınamadı:', error);
+                showAlert('Durum bilgisi alınamadı. Lütfen tekrar deneyin.', 'error');
+            }
+        }
+
+        async function manualCheck() {
+            const loading = document.getElementById('loading');
+            const alert = document.getElementById('alert');
+            
+            // Loading göster
+            loading.style.display = 'block';
+            alert.style.display = 'none';
+            
+            try {
+                const response = await fetch('/manual_check', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateStatusDisplay(data.status);
+                    showAlert('Manuel kontrol tamamlandı!', 'success');
+                } else {
+                    showAlert('Kontrol sırasında hata oluştu: ' + data.error, 'error');
+                }
+            } catch (error) {
+                console.error('Manuel kontrol hatası:', error);
+                showAlert('Manuel kontrol sırasında hata oluştu.', 'error');
+            } finally {
+                loading.style.display = 'none';
+            }
+        }
+
+        function updateStatusDisplay(data) {
+            const orderButtonStatus = document.getElementById('orderButtonStatus');
+            const availabilityStatus = document.getElementById('availabilityStatus');
+            const lastCheckTime = document.getElementById('lastCheckTime');
+            const connectionStatus = document.getElementById('connectionStatus');
+            const dataSource = document.getElementById('dataSource');
+            
+            // Sipariş butonu durumu
+            if (data.has_order_button === true) {
+                orderButtonStatus.textContent = '✅ Mevcut';
+                orderButtonStatus.className = 'status-value status-true';
+            } else if (data.has_order_button === false) {
+                orderButtonStatus.textContent = '❌ Yok';
+                orderButtonStatus.className = 'status-value status-false';
+            } else {
+                orderButtonStatus.textContent = '❓ Bilinmiyor';
+                orderButtonStatus.className = 'status-value status-unknown';
+            }
+            
+            // Stok durumu
+            if (data.has_availability === true) {
+                availabilityStatus.textContent = '✅ Stokta';
+                availabilityStatus.className = 'status-value status-true';
+            } else if (data.has_availability === false) {
+                availabilityStatus.textContent = '❌ Stokta Değil';
+                availabilityStatus.className = 'status-value status-false';
+            } else {
+                availabilityStatus.textContent = '❓ Bilinmiyor';
+                availabilityStatus.className = 'status-value status-unknown';
+            }
+            
+            // Bağlantı durumu
+            if (data.connection_status) {
+                connectionStatus.textContent = data.connection_status;
+                if (data.connection_status.includes('başarıyla')) {
+                    connectionStatus.className = 'connection-status connected';
+                } else if (data.connection_status.includes('bağlanılamıyor')) {
+                    connectionStatus.className = 'connection-status error';
+                } else {
+                    connectionStatus.className = 'connection-status';
+                }
+            }
+            
+            // Veri kaynağı
+            if (data.source) {
+                if (data.source === 'tesla') {
+                    dataSource.textContent = '📡 Veri kaynağı: Tesla sitesi (gerçek veri)';
+                    dataSource.style.background = '#d4edda';
+                    dataSource.style.color = '#155724';
+                } else if (data.source === 'mock') {
+                    dataSource.textContent = '🎭 Veri kaynağı: Demo veri (Tesla sitesine bağlanılamıyor)';
+                    dataSource.style.background = '#fff3cd';
+                    dataSource.style.color = '#856404';
+                }
+            }
+            
+            // Son kontrol zamanı
+            if (data.last_check) {
+                const checkTime = new Date(data.last_check);
+                lastCheckTime.textContent = `Son kontrol: ${checkTime.toLocaleString('tr-TR')}`;
+            } else {
+                lastCheckTime.textContent = 'Son kontrol: Henüz yapılmadı';
+            }
+        }
+
+        function showAlert(message, type) {
+            const alert = document.getElementById('alert');
+            alert.textContent = message;
+            alert.className = `alert alert-${type}`;
+            alert.style.display = 'block';
+            
+            // 5 saniye sonra gizle
+            setTimeout(() => {
+                alert.style.display = 'none';
+            }, 5000);
+        }
+
+        // Sayfa kapatılırken interval'i temizle
+        window.addEventListener('beforeunload', function() {
+            if (checkInterval) {
+                clearInterval(checkInterval);
+            }
+        });
+    </script>
+</body>
+</html> 
