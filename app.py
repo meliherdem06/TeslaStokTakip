@@ -11,6 +11,7 @@ from datetime import datetime
 import threading
 import os
 import urllib3
+import random
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -33,6 +34,9 @@ TESLA_URLS = [
     "https://www.tesla.com/tr_tr/model-y/design#overview"
 ]
 
+# Test mode - when Tesla website is unreachable
+TEST_MODE = False
+
 # Database setup
 def init_db():
     conn = sqlite3.connect('tesla_stok_takip.db')
@@ -51,8 +55,64 @@ def init_db():
     conn.commit()
     conn.close()
 
+def get_test_content():
+    """Generate test content when Tesla website is unreachable"""
+    # Simulate different scenarios
+    scenarios = [
+        {
+            'content': '''
+            <html>
+            <body>
+                <h1>Tesla Model Y</h1>
+                <button>Sipariş Ver</button>
+                <p>Stokta mevcut</p>
+                <div>Hemen sipariş verin</div>
+            </body>
+            </html>
+            ''',
+            'has_order': True,
+            'has_stock': True
+        },
+        {
+            'content': '''
+            <html>
+            <body>
+                <h1>Tesla Model Y</h1>
+                <p>Şu anda stokta değil</p>
+                <div>Bilgi alın</div>
+            </body>
+            </html>
+            ''',
+            'has_order': False,
+            'has_stock': False
+        },
+        {
+            'content': '''
+            <html>
+            <body>
+                <h1>Tesla Model Y</h1>
+                <button>Rezervasyon Yap</button>
+                <p>Ön sipariş</p>
+            </body>
+            </html>
+            ''',
+            'has_order': True,
+            'has_stock': False
+        }
+    ]
+    
+    # Randomly select a scenario
+    scenario = random.choice(scenarios)
+    return scenario['content'], scenario['has_order'], scenario['has_stock']
+
 def get_page_content():
     """Fetch Tesla Model Y page content with improved error handling"""
+    # If test mode is enabled, return test content
+    if TEST_MODE:
+        print("Using test mode - generating simulated Tesla page content")
+        content, has_order, has_stock = get_test_content()
+        return content
+    
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -375,6 +435,42 @@ def get_history():
         })
     
     return jsonify(history)
+
+@app.route('/api/toggle-test-mode', methods=['POST'])
+def toggle_test_mode():
+    """Toggle test mode on/off"""
+    global TEST_MODE
+    try:
+        data = request.get_json()
+        if data and 'enabled' in data:
+            TEST_MODE = data['enabled']
+            status = "etkinleştirildi" if TEST_MODE else "devre dışı bırakıldı"
+            return jsonify({
+                'success': True,
+                'message': f'Test modu {status}',
+                'test_mode': TEST_MODE,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Geçersiz parametre',
+                'timestamp': datetime.now().isoformat()
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Hata: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/api/test-mode-status')
+def get_test_mode_status():
+    """Get current test mode status"""
+    return jsonify({
+        'test_mode': TEST_MODE,
+        'message': 'Test modu etkin' if TEST_MODE else 'Test modu devre dışı'
+    })
 
 @app.route('/api/manual-check', methods=['POST'])
 def manual_check():

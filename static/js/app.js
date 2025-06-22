@@ -123,6 +123,11 @@ class TeslaStokTakip {
         document.getElementById('clearNotifications').addEventListener('click', () => {
             this.clearNotifications();
         });
+
+        // Test mode toggle button
+        document.getElementById('toggleTestMode').addEventListener('click', () => {
+            this.toggleTestMode();
+        });
     }
 
     updateConnectionStatus(connected) {
@@ -190,6 +195,49 @@ class TeslaStokTakip {
         } finally {
             button.innerHTML = originalText;
             button.disabled = false;
+        }
+    }
+
+    async toggleTestMode() {
+        const button = document.getElementById('toggleTestMode');
+        const originalText = button.innerHTML;
+        
+        try {
+            // Get current test mode status
+            const statusResponse = await fetch('/api/test-mode-status');
+            const statusData = await statusResponse.json();
+            
+            // Toggle test mode
+            const response = await fetch('/api/toggle-test-mode', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    enabled: !statusData.test_mode
+                })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                this.addNotification(data.message, 'success');
+                
+                // Update button text
+                if (data.test_mode) {
+                    button.innerHTML = '<i class="fas fa-flask"></i> Test Modu Açık';
+                    button.classList.add('btn-success');
+                    button.classList.remove('btn-warning');
+                } else {
+                    button.innerHTML = '<i class="fas fa-flask"></i> Test Modu';
+                    button.classList.remove('btn-success');
+                    button.classList.add('btn-warning');
+                }
+            } else {
+                this.addNotification(`Test modu hatası: ${data.message}`, 'error');
+            }
+        } catch (error) {
+            console.error('Test mode toggle error:', error);
+            this.addNotification('Test modu değiştirilirken hata oluştu', 'error');
         }
     }
 
