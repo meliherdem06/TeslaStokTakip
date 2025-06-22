@@ -1,122 +1,145 @@
-# Tesla Model Y Stok Takip Sistemi
+# Tesla Model Y Stok Takip Sistemi - Local Mod
 
-Tesla Model Y'nin Türkiye'deki stok ve sipariş durumunu gerçek zamanlı olarak takip eden web uygulaması.
+Tesla Model Y'nin Türkiye'deki stok ve sipariş durumunu **sadece local bilgisayarınızda** gerçek zamanlı olarak takip eden web uygulaması.
 
-## Özellikler
+## 🎯 Özellikler
 
 - 🔄 **Gerçek Zamanlı Takip**: Tesla'nın Türkiye sayfasını 5 dakikada bir kontrol eder
+- 🌐 **Selenium WebDriver**: Gerçek tarayıcı gibi davranarak Tesla'nın sitesine erişir
 - 📊 **Durum Analizi**: Sipariş butonu ve stok durumu analizi
-- 🔔 **Bildirimler**: Durum değişikliklerinde sesli ve görsel bildirimler
+- 🔔 **Bildirimler**: Durum değişikliklerinde görsel bildirimler
 - 📱 **Responsive Tasarım**: Mobil ve masaüstü uyumlu arayüz
 - 🗄️ **Veri Saklama**: SQLite veritabanında geçmiş kayıtları
 - 🌐 **Web API**: RESTful API ile durum sorgulama
 
-## Teknolojiler
+## ⚠️ Önemli Not
+
+Bu uygulama **sadece local bilgisayarınızda** çalışır. Render, Heroku gibi bulut platformlarında çalışmaz çünkü:
+- Tesla, bulut IP'lerini engelliyor
+- Selenium WebDriver bulut ortamlarında sorunlu çalışıyor
+- Local IP adresiniz Tesla tarafından daha güvenilir kabul ediliyor
+
+## 🛠️ Teknolojiler
 
 - **Frontend**: HTML5, CSS3, JavaScript (Vanilla)
 - **Backend**: Python, Flask
+- **Web Scraping**: Selenium WebDriver, BeautifulSoup4
 - **Veritabanı**: SQLite
-- **Web Scraping**: BeautifulSoup4, Requests
-- **Hosting**: Render (Free Tier)
+- **Browser Automation**: Chrome WebDriver
 
-## Kurulum
+## 📋 Gereksinimler
 
-### Gereksinimler
-
-- Python 3.9.16
+- Python 3.9+
+- Google Chrome tarayıcısı
 - pip
 
-### Yerel Kurulum
+## 🚀 Kurulum
 
-1. Projeyi klonlayın:
+### 1. Projeyi Klonlayın
 ```bash
-git clone https://github.com/yourusername/tesla-stock-monitor.git
-cd tesla-stock-monitor
+git clone https://github.com/meliherdem06/TeslaStokTakip.git
+cd TeslaStokTakip
 ```
 
-2. Sanal ortam oluşturun:
+### 2. Virtual Environment Oluşturun
 ```bash
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
+source venv/bin/activate  # macOS/Linux
 # veya
 venv\Scripts\activate  # Windows
 ```
 
-3. Bağımlılıkları yükleyin:
+### 3. Bağımlılıkları Yükleyin
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Uygulamayı çalıştırın:
+### 4. Uygulamayı Başlatın
 ```bash
 python app.py
 ```
 
-5. Tarayıcınızda `http://localhost:5001` adresini açın.
+Uygulama `http://localhost:5001` adresinde çalışmaya başlayacak.
 
-## Kullanım
+## 🎮 Kullanım
 
-1. **Otomatik Takip**: Uygulama otomatik olarak Tesla sayfasını kontrol eder
-2. **Manuel Kontrol**: "Manuel Kontrol" butonuna tıklayarak anlık kontrol yapabilirsiniz
+1. **Otomatik Kontrol**: Uygulama her 5 dakikada bir Tesla sitesini otomatik kontrol eder
+2. **Manuel Kontrol**: "Manuel Kontrol" butonuna tıklayarak anında kontrol yapabilirsiniz
 3. **Durum Görüntüleme**: Ana sayfada mevcut durumu görebilirsiniz
-4. **Bildirimler**: Durum değişikliklerinde otomatik bildirim alırsınız
+4. **API Kullanımı**: `/api/status` endpoint'i ile programatik erişim
 
-## API Endpoints
+## 📡 API Endpoints
 
-- `GET /api/status` - Mevcut durumu döndürür
-- `POST /manual_check` - Manuel kontrol yapar
+### GET /api/status
+Mevcut durumu döndürür:
+```json
+{
+  "has_order_button": true/false/null,
+  "has_availability": true/false/null,
+  "last_check": "2025-06-22T21:13:15.195624",
+  "timestamp": "2025-06-22T21:13:15.195624"
+}
+```
 
-## Deployment
+### POST /manual_check
+Manuel kontrol başlatır:
+```json
+{
+  "success": true,
+  "status": {
+    "has_order_button": true/false/null,
+    "has_availability": true/false/null
+  },
+  "message": "Manual check completed"
+}
+```
 
-### Render'da Deployment
+## 🔧 Konfigürasyon
 
-1. GitHub'a projeyi push edin
-2. Render'da yeni Web Service oluşturun
-3. GitHub repository'nizi bağlayın
-4. Build Command: `chmod +x build.sh && ./build.sh`
-5. Start Command: `gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class sync --timeout 120 --preload app:app`
+### Port Değiştirme
+```bash
+PORT=8080 python app.py
+```
 
-## Konfigürasyon
+### Kontrol Sıklığını Değiştirme
+`app.py` dosyasında `time.sleep(300)` değerini değiştirin (saniye cinsinden).
 
-### Environment Variables
+## 🐛 Sorun Giderme
 
-- `PORT`: Uygulama portu (varsayılan: 5001)
-- `PYTHON_VERSION`: Python versiyonu (3.9.16)
-
-### Tesla URLs
-
-Uygulama aşağıdaki Tesla URL'lerini kontrol eder:
-
-- https://www.tesla.com/tr_TR/modely/design#overview
-- https://www.tesla.com/tr_tr/model-y/design
-- https://www.tesla.com/tr_TR/modely
-- https://www.tesla.com/tr_tr/modely
-- https://www.tesla.com/tr_TR/model-y
-- https://www.tesla.com/tr_tr/modely/design
-- https://www.tesla.com/tr_TR/model-y/design
-- https://www.tesla.com/tr_tr/modely/design#overview
-- https://www.tesla.com/tr_TR/modely/design#overview
-- https://www.tesla.com/tr_tr/modely/design#overview
-
-## Sorun Giderme
+### Chrome WebDriver Sorunu
+Eğer Chrome WebDriver ile ilgili sorun yaşıyorsanız:
+1. Google Chrome'un güncel olduğundan emin olun
+2. `webdriver-manager` otomatik olarak uygun driver'ı indirecektir
+3. İlk çalıştırmada biraz zaman alabilir
 
 ### Port Çakışması
+Port 5001 kullanımdaysa:
 ```bash
-# Port 5001 kullanımdaysa farklı port kullanın
 PORT=5002 python app.py
 ```
 
-### Bağlantı Sorunları
-- Tesla'nın bot koruması nedeniyle bazen bağlantı sorunları yaşanabilir
-- Uygulama otomatik olarak farklı URL'leri dener
-- Manuel kontrol ile anlık test yapabilirsiniz
+### SSL Uyarıları
+macOS'ta SSL uyarıları görülebilir, bu normaldir ve uygulamayı etkilemez.
 
-### Deployment Sorunları
-- Render'da build cache'ini temizleyin
-- Python 3.9.16 kullandığınızdan emin olun
-- Eventlet/gevent kullanmadığınızdan emin olun
+## 📊 Veritabanı
 
-## Katkıda Bulunma
+SQLite veritabanı (`tesla_status.db`) otomatik olarak oluşturulur ve şu bilgileri saklar:
+- Kontrol zamanı
+- Sipariş butonu durumu
+- Stok durumu
+- Kontrol edilen URL
+
+## 🔒 Güvenlik
+
+- Uygulama sadece localhost'ta çalışır
+- Dış bağlantılara açık değildir
+- Tesla'nın sitesine sadece okuma amaçlı erişir
+
+## 📝 Lisans
+
+Bu proje eğitim amaçlıdır. Tesla'nın kullanım şartlarına uygun kullanın.
+
+## 🤝 Katkıda Bulunma
 
 1. Fork yapın
 2. Feature branch oluşturun (`git checkout -b feature/amazing-feature`)
@@ -124,26 +147,10 @@ PORT=5002 python app.py
 4. Push yapın (`git push origin feature/amazing-feature`)
 5. Pull Request oluşturun
 
-## Lisans
+## 📞 İletişim
 
-Bu proje MIT lisansı altında lisanslanmıştır.
+Sorularınız için GitHub Issues kullanabilirsiniz.
 
-## Teşekkürler
+---
 
-- Tesla Türkiye
-- Flask geliştiricileri
-- BeautifulSoup4 geliştiricileri
-- Render hosting platformu
-
-## WebSocket Events
-
-- `connect` - Bağlantı kurulduğunda
-- `disconnect` - Bağlantı kesildiğinde
-- `status_update` - Durum güncellendiğinde
-
-## Veritabanı
-
-SQLite veritabanı (`tesla_stok_takip.db`) şu tabloları içerir:
-
-- `page_snapshots`: Sayfa anlık görüntüleri
-- `status_changes`: Durum değişiklikleri
+**Not**: Bu uygulama Tesla'nın resmi bir ürünü değildir ve Tesla ile hiçbir bağlantısı yoktur.
