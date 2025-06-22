@@ -22,7 +22,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interva
 
 # Global variables
 last_check_time = None
-last_status = "Unknown"
+last_status = {"has_order_button": None, "has_availability": None}
 
 # Tesla URLs to try
 TESLA_URLS = [
@@ -224,133 +224,78 @@ def save_snapshot(content, has_order_button, has_availability):
     return content_hash
 
 def perform_check():
-    """Perform the actual check without WebSocket emissions"""
+    """Perform the actual check. Returns a status dict if changed, None if no change, and raises exception on error."""
     global last_check_time, last_status
     
-    try:
-        print(f"Checking Tesla page at {datetime.now()}")
-        
-        # Get page content
-        content = get_page_content()
-        
-        if not content:
-            print("Could not fetch content from Tesla page")
-            return None
-        
-        # Analyze content
-        has_order_button, has_availability = analyze_content(content)
-        
-        # Save snapshot
-        save_snapshot(content, has_order_button, has_availability)
-        
-        # Determine status
-        if has_order_button and has_availability:
-            status = "Stock Available"
-        elif has_order_button and not has_availability:
-            status = "Pre-order Available"
-        else:
-            status = "No Stock"
-        
-        # Update last check time
-        last_check_time = datetime.now()
-        
-        # Check if status changed
-        if last_status != status:
-            print(f"Status changed from '{last_status}' to '{status}'")
-            last_status = status
-            return status
-        else:
-            print(f"Status unchanged: {status}")
-            return None
-            
-    except Exception as e:
-        print(f"Error in perform_check: {e}")
+    print(f"Checking Tesla page at {datetime.now()}")
+    
+    content = get_page_content()
+    
+    if not content:
+        raise ConnectionError("Could not fetch content from Tesla page")
+
+    has_order_button, has_availability = analyze_content(content)
+    
+    save_snapshot(content, has_order_button, has_availability)
+    
+    new_status = {
+        'has_order_button': has_order_button,
+        'has_availability': has_availability
+    }
+    
+    last_check_time = datetime.now()
+    
+    if last_status['has_order_button'] != new_status['has_order_button'] or last_status['has_availability'] != new_status['has_availability']:
+        print(f"Status changed from {last_status} to {new_status}")
+        last_status = new_status
+        return last_status 
+    else:
+        print(f"Status unchanged: {last_status}")
         return None
 
 def check_for_changes():
-    """Main monitoring function with WebSocket notifications and improved error handling"""
+    """Main monitoring function with WebSocket notifications."""
     try:
-        result = perform_check()
+        new_status = perform_check()
         
-        if result is None:
-            # Connection failed - notify frontend
+        if new_status:
+            # Status changed
             socketio.emit('status_update', {
-                'timestamp': datetime.now().isoformat(),
-                'status': 'connection_error',
-                'message': 'Tesla sayfasına bağlanılamıyor. Ağ bağlantısı kontrol ediliyor...'
+                'message': 'Tesla Model Y durumunda değişiklik tespit edildi!',
+                'last_check_time': last_check_time.isoformat(),
+                **new_status
             })
-            
-            # Get last known status to show
-            conn = sqlite3.connect('tesla_stok_takip.db')
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT timestamp, has_order_button, has_availability 
-                FROM page_snapshots 
-                ORDER BY timestamp DESC 
-                LIMIT 1
-            ''')
-            db_result = cursor.fetchone()
-            conn.close()
-            
-            if db_result:
-                timestamp, has_order_button, has_availability = db_result
-                socketio.emit('status_update', {
-                    'timestamp': datetime.now().isoformat(),
-                    'status': 'last_known',
-                    'message': f'Son bilinen durum ({timestamp}): Sipariş {"Mevcut" if has_order_button else "Yok"}, Stok {"Mevcut" if has_availability else "Yok"}',
-                    'has_order_button': has_order_button,
-                    'has_availability': has_availability
-                })
-            return
-        
-        # Send WebSocket notifications for successful checks
-        if result:
-            socketio.emit('status_update', {
-                'timestamp': datetime.now().isoformat(),
-                'status': result,
-                'message': f'Tesla Model Y stok durumu güncellendi!'
-            })
-            print(f"Status changed: {result}")
         else:
-            # No changes but successful check
-            socketio.emit('check_complete', {
-                'status': 'no_changes',
-                'message': 'Kontrol tamamlandı - Değişiklik yok'
+            # No changes
+             socketio.emit('check_complete', {
+                'message': 'Kontrol tamamlandı - Değişiklik yok',
+                'last_check_time': last_check_time.isoformat() if last_check_time else datetime.now().isoformat(),
+                **last_status
             })
-            print("Check completed - No changes")
-        
+
+    except ConnectionError as e:
+        print(f"Connection error in check_for_changes: {e}")
+        socketio.emit('status_update', {
+            'message': 'Tesla sayfasına bağlanılamıyor. Ağ bağlantınızı kontrol edin.',
+            'last_check_time': datetime.now().isoformat(),
+            'has_order_button': None, 
+            'has_availability': None
+        })
     except Exception as e:
         print(f"Error in check_for_changes: {e}")
-        # Emit error to frontend
         socketio.emit('status_update', {
-            'timestamp': datetime.now().isoformat(),
-            'status': 'error',
-            'message': f'Kontrol hatası: {str(e)}'
+            'message': f'Kontrol sırasında bir hata oluştu: {e}',
+            'last_check_time': datetime.now().isoformat(),
+            'has_order_button': None,
+            'has_availability': None
         })
 
 # Initialize database
 init_db()
 
-# Setup scheduler for periodic checks with retry mechanism
+# Setup scheduler for periodic checks
 scheduler = BackgroundScheduler()
-scheduler.add_job(func=check_for_changes, trigger="interval", minutes=5, id="main_check")
-
-# Add a retry job that runs more frequently when there are connection issues
-def retry_check():
-    """Retry check with shorter interval when main check fails"""
-    try:
-        result = perform_check()
-        if result is not None:
-            # If successful, remove the retry job
-            try:
-                scheduler.remove_job("retry_check")
-            except:
-                pass
-    except Exception as e:
-        print(f"Retry check error: {e}")
-
-# Add retry job (will be added/removed dynamically)
-scheduler.add_job(func=retry_check, trigger="interval", minutes=1, id="retry_check")
+scheduler.add_job(func=check_for_changes, trigger="interval", minutes=5)
 scheduler.start()
 
 @app.route('/')
@@ -360,10 +305,10 @@ def index():
 
 @app.route('/api/status')
 def get_status():
-    """Get current status"""
+    """Get current status for initial page load"""
     return jsonify({
         'last_check_time': last_check_time.isoformat() if last_check_time else None,
-        'last_status': last_status
+        **last_status
     })
 
 @app.route('/api/history')
@@ -396,44 +341,42 @@ def manual_check():
     """Manual check endpoint"""
     try:
         print("Manual check requested")
+        new_status = perform_check()
         
-        # Perform the check
-        result = perform_check()
-        
-        if result:
-            # Status changed
+        if new_status:
             socketio.emit('status_update', {
-                'timestamp': datetime.now().isoformat(),
-                'status': result,
-                'message': f'Tesla Model Y stok durumu güncellendi!'
+                'message': 'Manuel kontrol sonucu durum değişti!',
+                'last_check_time': last_check_time.isoformat(),
+                **new_status
             })
-            return jsonify({
-                'success': True,
-                'message': f'Manuel kontrol tamamlandı - Durum: {result}',
-                'status': result
-            })
+            return jsonify({'success': True, 'message': 'Manuel kontrol tamamlandı, durum değişti.', **new_status})
         else:
-            # No change
-            socketio.emit('manual_check_complete', {
-                'status': 'no_changes',
-                'message': 'Manuel kontrol tamamlandı - Değişiklik yok'
+            socketio.emit('check_complete', {
+                'message': 'Manuel kontrol tamamlandı - Değişiklik yok.',
+                'last_check_time': last_check_time.isoformat() if last_check_time else datetime.now().isoformat(),
+                **last_status
             })
-            return jsonify({
-                'success': True,
-                'message': 'Manuel kontrol tamamlandı - Değişiklik yok'
-            })
+            return jsonify({'success': True, 'message': 'Manuel kontrol tamamlandı, değişiklik yok.', **last_status})
             
+    except ConnectionError as e:
+        print(f"Connection error in manual_check: {e}")
+        socketio.emit('status_update', {
+            'message': 'Tesla sayfasına bağlanılamıyor. Ağ bağlantınızı kontrol edin.',
+            'last_check_time': datetime.now().isoformat(),
+            'has_order_button': None,
+            'has_availability': None
+        })
+        return jsonify({'success': False, 'message': 'Tesla sayfasına bağlanılamıyor.'}), 503
     except Exception as e:
         print(f"Error in manual check: {e}")
-        return jsonify({
-            'success': False,
-            'message': f'Manuel kontrol hatası: {str(e)}'
-        }), 500
+        return jsonify({'success': False, 'message': f'Manuel kontrol hatası: {str(e)}'}), 500
 
 @socketio.on('connect')
 def handle_connect():
-    print('Client connected')
-    emit('status', {'message': 'Connected to Tesla Stok Takip'})
+    """Send initial status to a newly connected client."""
+    print('Client connected. Sending initial status.')
+    # Perform an initial check for the new client in a background task
+    socketio.start_background_task(check_for_changes)
 
 @socketio.on('disconnect')
 def handle_disconnect():

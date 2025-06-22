@@ -11,95 +11,54 @@ class TeslaStokTakip {
     init() {
         this.connectWebSocket();
         this.setupEventListeners();
-        this.loadInitialData();
-        this.setupChart();
+        this.loadHistoryData();
     }
 
     connectWebSocket() {
         this.socket = io({
-            transports: ['websocket', 'polling'],
-            timeout: 60000,
+            transports: ['websocket'],
             reconnection: true,
-            reconnectionAttempts: 5,
-            reconnectionDelay: 1000
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            reconnectionAttempts: Infinity
         });
-        
+
         this.socket.on('connect', () => {
+            console.log('WebSocket connected');
             this.updateConnectionStatus(true);
-            this.addNotification('Sistem bağlandı', 'success');
+            this.addNotification('Sisteme bağlandı, ilk durum kontrol ediliyor...', 'info');
         });
 
         this.socket.on('disconnect', () => {
+            console.log('WebSocket disconnected');
             this.updateConnectionStatus(false);
-            this.addNotification('Bağlantı kesildi, yeniden bağlanılıyor...', 'warning');
-        });
-
-        this.socket.on('connect_error', (error) => {
-            console.error('WebSocket connection error:', error);
-            this.addNotification('Bağlantı hatası: ' + error.message, 'error');
-        });
-
-        this.socket.on('reconnect', (attemptNumber) => {
-            this.addNotification(`Yeniden bağlandı (${attemptNumber}. deneme)`, 'success');
-        });
-
-        this.socket.on('reconnect_failed', () => {
-            this.addNotification('Yeniden bağlanma başarısız', 'error');
-        });
-
-        this.socket.on('status', (data) => {
-            this.addNotification(data.message, 'info');
+            this.addNotification('Sistemle bağlantı kesildi', 'warning');
         });
 
         this.socket.on('status_update', (data) => {
-            // Handle different status types
-            switch(data.status) {
-                case 'connection_error':
-                    this.addNotification(data.message, 'warning');
-                    break;
-                case 'last_known':
-                    this.addNotification(data.message, 'info');
-                    if (data.has_order_button !== undefined && data.has_availability !== undefined) {
-                        this.updateStatus({
-                            has_order_button: data.has_order_button,
-                            has_availability: data.has_availability
-                        });
-                    }
-                    break;
-                case 'no_changes':
-                    this.addNotification(data.message, 'info');
-                    if (data.has_order_button !== undefined && data.has_availability !== undefined) {
-                        this.updateStatus({
-                            has_order_button: data.has_order_button,
-                            has_availability: data.has_availability
-                        });
-                    }
-                    break;
-                case 'error':
-                    this.addNotification(data.message, 'error');
-                    break;
-                default:
-                    this.addNotification(data.message, 'info');
+            console.log('Status update received:', data);
+            this.addNotification(data.message, 'info');
+            this.updateStatus(data);
+            
+            if (data.has_availability) {
+                this.addNotification('🚗 TESLA MODEL Y STOKTA! 🚗', 'success');
+                this.playNotificationSound();
+            } else if (data.has_order_button) {
+                 this.addNotification('🔔 Tesla Model Y için ön sipariş mevcut olabilir!', 'warning');
+                 this.playNotificationSound();
             }
         });
-
-        this.socket.on('page_change', (data) => {
-            this.addNotification(data.message, 'warning');
-            this.playNotificationSound();
+        
+        this.socket.on('check_complete', (data) => {
+            console.log('Check complete received:', data);
+            this.addNotification(data.message, 'info');
             this.updateStatus(data);
         });
 
-        this.socket.on('order_available', (data) => {
-            this.addNotification('🚗 TESLA MODEL Y SİPARİŞİ MEVCUT! 🚗', 'success');
-            this.playNotificationSound();
-            this.playNotificationSound(); // Play twice for emphasis
-            this.updateOrderStatus(true);
-        });
-
-        this.socket.on('stock_change', (data) => {
-            this.addNotification('📦 Stok durumu değişti!', 'warning');
-            this.playNotificationSound();
-            this.updateStockStatus(true);
+        this.socket.on('connect_error', (error) => {
+            console.error('Connection Error:', error);
+            this.updateConnectionStatus(false);
+            this.addNotification('Bağlantı hatası: ' + error.message, 'error');
         });
     }
 
@@ -139,14 +98,8 @@ class TeslaStokTakip {
     }
 
     async loadInitialData() {
-        try {
-            const response = await fetch('/api/status');
-            const data = await response.json();
-            this.updateStatus(data);
-        } catch (error) {
-            console.error('Error loading initial data:', error);
-            this.addNotification('Veri yüklenirken hata oluştu', 'error');
-        }
+        // This is now only for the history chart or as a fallback.
+        // The primary status update comes from the 'status_update' websocket event.
     }
 
     async manualCheck() {
@@ -168,12 +121,7 @@ class TeslaStokTakip {
             
             if (data.success) {
                 this.addNotification(data.message, 'success');
-                
-                // If status changed, show special notification
-                if (data.status && data.status !== 'No Stock') {
-                    this.addNotification(`🚗 TESLA MODEL Y ${data.status}! 🚗`, 'success');
-                    this.playNotificationSound();
-                }
+                // The backend will push the update via WebSocket, so no need to call updateStatus here.
             } else {
                 this.addNotification(`Manuel kontrol hatası: ${data.message}`, 'error');
             }
@@ -191,24 +139,30 @@ class TeslaStokTakip {
         const orderStatus = document.getElementById('orderStatus');
         const orderStatusIcon = document.getElementById('orderStatusIcon');
         
-        if (data.has_order_button) {
-            orderStatus.textContent = 'Sipariş Mevcut!';
-            orderStatusIcon.classList.add('available');
+        if (data.has_order_button === null) {
+            orderStatus.textContent = 'Bilinmiyor';
+            orderStatusIcon.className = 'status-icon order-status';
+        } else if (data.has_order_button) {
+            orderStatus.textContent = 'Sipariş Mevcut';
+            orderStatusIcon.className = 'status-icon order-status available';
         } else {
             orderStatus.textContent = 'Sipariş Yok';
-            orderStatusIcon.classList.remove('available');
+            orderStatusIcon.className = 'status-icon order-status';
         }
 
         // Update stock status
         const stockStatus = document.getElementById('stockStatus');
         const stockStatusIcon = document.getElementById('stockStatusIcon');
         
-        if (data.has_availability) {
-            stockStatus.textContent = 'Stok Mevcut!';
-            stockStatusIcon.classList.add('available');
+        if (data.has_availability === null) {
+            stockStatus.textContent = 'Bilinmiyor';
+            stockStatusIcon.className = 'status-icon stock-status';
+        } else if (data.has_availability) {
+            stockStatus.textContent = 'Stok Mevcut';
+            stockStatusIcon.className = 'status-icon stock-status available';
         } else {
             stockStatus.textContent = 'Stok Yok';
-            stockStatusIcon.classList.remove('available');
+            stockStatusIcon.className = 'status-icon stock-status';
         }
 
         // Update last check time
@@ -216,28 +170,6 @@ class TeslaStokTakip {
         if (data.last_check_time) {
             const date = new Date(data.last_check_time);
             lastCheck.textContent = date.toLocaleString('tr-TR');
-        } else {
-            lastCheck.textContent = 'Henüz kontrol edilmedi';
-        }
-    }
-
-    updateOrderStatus(available) {
-        const orderStatus = document.getElementById('orderStatus');
-        const orderStatusIcon = document.getElementById('orderStatusIcon');
-        
-        if (available) {
-            orderStatus.textContent = 'Sipariş Mevcut!';
-            orderStatusIcon.classList.add('available');
-        }
-    }
-
-    updateStockStatus(available) {
-        const stockStatus = document.getElementById('stockStatus');
-        const stockStatusIcon = document.getElementById('stockStatusIcon');
-        
-        if (available) {
-            stockStatus.textContent = 'Stok Mevcut!';
-            stockStatusIcon.classList.add('available');
         }
     }
 
