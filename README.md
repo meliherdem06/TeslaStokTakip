@@ -101,8 +101,8 @@ Bu proje MIT lisansı altında lisanslanmıştır.
 
 ## 📞 İletişim
 
-- **Proje Sahibi**: [GitHub Profiliniz]
-- **Email**: [Email Adresiniz]
+- **Proje Sahibi**: [meliherdem06]
+- **Email**: [meliherddem@gmail.com]
 
 ## 🙏 Teşekkürler
 
