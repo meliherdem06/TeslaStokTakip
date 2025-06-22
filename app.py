@@ -9,7 +9,6 @@ from flask_socketio import SocketIO
 from bs4 import BeautifulSoup
 from apscheduler.schedulers.background import BackgroundScheduler
 import warnings
-import random
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -18,7 +17,7 @@ warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'tesla-stok-takip-secret-key'
 
-# SocketIO setup
+# SocketIO setup - NO eventlet, use default
 socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
 # Global variables
@@ -72,14 +71,22 @@ def get_page_content():
         'Accept-Encoding': 'gzip, deflate',
         'Connection': 'keep-alive',
     }
+    
     print(f"Trying Tesla URLs with requests...")
+    
+    # Try only the first URL to avoid complexity
     url = TESLA_URLS[0]
+    
     try:
         print(f"Trying URL: {url}")
+        
+        # Simple request without session
         response = requests.get(url, headers=headers, timeout=30, allow_redirects=True, verify=False)
         response.raise_for_status()
+        
         print(f"Page fetched successfully from {url}")
         return response.text
+        
     except Exception as e:
         print(f"Failed to fetch {url}. Error: {e}")
         return None
@@ -203,192 +210,159 @@ def perform_check():
         save_snapshot(content, has_order_button, has_availability)
         
         new_status = {
-            'has_order_button': has_order_button,
-            'has_availability': has_availability
+            "has_order_button": has_order_button,
+            "has_availability": has_availability
         }
         
-        last_check_time = datetime.now()
-        consecutive_failures = 0  # Reset failure counter on success
-        
-        if last_status['has_order_button'] != new_status['has_order_button'] or last_status['has_availability'] != new_status['has_availability']:
+        # Check if status changed
+        if new_status != last_status:
             print(f"Status changed from {last_status} to {new_status}")
             last_status = new_status
-            return last_status 
+            last_check_time = datetime.now()
+            consecutive_failures = 0
+            return new_status
         else:
-            print(f"Status unchanged: {last_status}")
+            print(f"Status unchanged: {new_status}")
+            last_check_time = datetime.now()
+            consecutive_failures = 0
             return None
             
-    except ConnectionError as e:
-        print(f"Connection error in perform_check: {e}")
-        last_failure_time = datetime.now()
-        consecutive_failures += 1
-        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-            print(f"Tesla sayfasına bağlanılamıyor. Çok sayıda ardışık bağlantı hatası. Lütfen daha sonra tekrar deneyin.")
-        raise e
     except Exception as e:
-        print(f"Error in perform_check: {e}")
-        last_failure_time = datetime.now()
         consecutive_failures += 1
-        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
-            print(f"Tesla sayfasına bağlanılamıyor. Çok sayıda ardışık bağlantı hatası. Lütfen daha sonra tekrar deneyin.")
-        raise e
+        last_failure_time = datetime.now()
+        print(f"Connection error in check_for_changes: {e}")
+        raise
 
 def get_last_known_status_from_db():
-    """Fetches the most recent successful snapshot from the database."""
-    conn = sqlite3.connect('tesla_stok_takip.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT timestamp, has_order_button, has_availability 
-        FROM page_snapshots 
-        ORDER BY timestamp DESC 
-        LIMIT 1
-    ''')
-    result = cursor.fetchone()
-    conn.close()
-    if result:
-        timestamp, has_order, has_avail = result
-        return {
-            'last_check_time': timestamp,
-            'has_order_button': has_order,
-            'has_availability': has_avail
-        }
-    return None
+    """Get the last known status from database"""
+    try:
+        conn = sqlite3.connect('tesla_stok_takip.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT has_order_button, has_availability, timestamp 
+            FROM page_snapshots 
+            ORDER BY timestamp DESC 
+            LIMIT 1
+        ''')
+        result = cursor.fetchone()
+        conn.close()
+        
+        if result:
+            return {
+                "has_order_button": result[0],
+                "has_availability": result[1],
+                "last_check": result[2]
+            }
+        return None
+    except Exception as e:
+        print(f"Error getting last status from DB: {e}")
+        return None
 
 def check_for_changes():
-    """Main monitoring function. Emits status via WebSocket."""
+    """Background job to check for changes"""
     try:
-        new_status = perform_check()
-        if new_status:
-            socketio.emit('status_update', {
-                'message': 'Tesla Model Y durumunda değişiklik tespit edildi!',
-                'last_check_time': last_check_time.isoformat(),
-                **new_status
-            })
-        else:
-            socketio.emit('check_complete', {
-                'message': 'Kontrol tamamlandı - Değişiklik yok.',
-                'last_check_time': last_check_time.isoformat(),
-                **last_status
-            })
-    except ConnectionError as e:
-        print(f"Connection error in check_for_changes: {e}")
-        last_known = get_last_known_status_from_db()
-        if last_known:
-            socketio.emit('status_update', {
-                'message': f"Yeni veri alınamıyor. Son başarılı kontrol: {last_known['last_check_time']}",
-                **last_known
-            })
-        else:
-            socketio.emit('status_update', {'message': 'Tesla sayfasına bağlanılamıyor ve veritabanında eski kayıt bulunamadı.'})
+        result = perform_check()
+        if result:
+            # Emit to all connected clients
+            socketio.emit('status_update', result)
+            print(f"Status update sent to clients: {result}")
     except Exception as e:
-        print(f"Error in check_for_changes: {e}")
-        socketio.emit('status_update', {
-            'message': f'Kontrol sırasında bir hata oluştu: {e}',
-            'last_check_time': datetime.now().isoformat(),
-            'has_order_button': None,
-            'has_availability': None
-        })
+        print(f"Error in background check: {e}")
+        # Emit error to clients
+        socketio.emit('error', {"message": str(e)})
 
 # Initialize database
 init_db()
 
-# Setup scheduler for periodic checks
+# Setup scheduler
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=check_for_changes, trigger="interval", minutes=5)
 scheduler.start()
 
+# Routes
 @app.route('/')
 def index():
-    """Main page"""
     return render_template('index.html')
 
 @app.route('/api/status')
 def get_status():
-    """Get current status for initial page load"""
+    """Get current status"""
+    global last_status, last_check_time
+    
+    # If we have no status, try to get from database
+    if last_status["has_order_button"] is None:
+        db_status = get_last_known_status_from_db()
+        if db_status:
+            last_status = {
+                "has_order_button": db_status["has_order_button"],
+                "has_availability": db_status["has_availability"]
+            }
+    
     return jsonify({
-        'last_check_time': last_check_time.isoformat() if last_check_time else None,
-        **last_status
+        "status": last_status,
+        "last_check": last_check_time.isoformat() if last_check_time else None
     })
 
 @app.route('/api/history')
 def get_history():
-    """Get monitoring history"""
-    conn = sqlite3.connect('tesla_stok_takip.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT timestamp, has_order_button, has_availability 
-        FROM page_snapshots 
-        ORDER BY timestamp DESC 
-        LIMIT 50
-    ''')
-    results = cursor.fetchall()
-    conn.close()
-    
-    history = []
-    for row in results:
-        timestamp, has_order_button, has_availability = row
-        history.append({
-            'timestamp': timestamp,
-            'has_order_button': has_order_button,
-            'has_availability': has_availability
-        })
-    
-    return jsonify(history)
+    """Get history of checks"""
+    try:
+        conn = sqlite3.connect('tesla_stok_takip.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT timestamp, has_order_button, has_availability, content_length
+            FROM page_snapshots 
+            ORDER BY timestamp DESC 
+            LIMIT 50
+        ''')
+        results = cursor.fetchall()
+        conn.close()
+        
+        history = []
+        for row in results:
+            history.append({
+                "timestamp": row[0],
+                "has_order_button": row[1],
+                "has_availability": row[2],
+                "content_length": row[3]
+            })
+        
+        return jsonify(history)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/manual_check', methods=['POST'])
 def manual_check():
-    """Manual check endpoint."""
+    """Manual check endpoint"""
+    print("Manual check requested")
     try:
-        print("Manual check requested")
-        new_status = perform_check()
-        
-        if new_status:
-            socketio.emit('status_update', {
-                'message': 'Manuel kontrol sonucu durum değişti!',
-                'last_check_time': last_check_time.isoformat(),
-                **new_status
-            })
-            return jsonify({'success': True, 'message': 'Manuel kontrol tamamlandı, durum değişti.', **new_status})
+        result = perform_check()
+        if result:
+            socketio.emit('status_update', result)
+            return jsonify({"success": True, "status": result})
         else:
-            socketio.emit('check_complete', {
-                'message': 'Manuel kontrol tamamlandı - Değişiklik yok.',
-                'last_check_time': last_check_time.isoformat() if last_check_time else datetime.now().isoformat(),
-                **last_status
-            })
-            return jsonify({'success': True, 'message': 'Manuel kontrol tamamlandı, değişiklik yok.', **last_status})
-            
-    except ConnectionError as e:
-        print(f"Connection error in manual_check: {e}")
-        last_known = get_last_known_status_from_db()
-        if last_known:
-             socketio.emit('status_update', {
-                'message': f"Yeni veri alınamıyor. Son başarılı kontrol: {last_known['last_check_time']}",
-                **last_known
-            })
-             return jsonify({'success': False, 'message': 'Tesla sayfasına bağlanılamıyor. Son bilinen durum gösteriliyor.'}), 503
-        else:
-            return jsonify({'success': False, 'message': 'Tesla sayfasına bağlanılamıyor ve veritabanında eski kayıt bulunamadı.'}), 503
+            return jsonify({"success": True, "message": "No changes detected"})
     except Exception as e:
-        print(f"Error in manual check: {e}")
-        return jsonify({'success': False, 'message': f'Manuel kontrol hatası: {str(e)}'}), 500
+        return jsonify({"success": False, "error": str(e)}), 500
 
+# SocketIO events
 @socketio.on('connect')
 def handle_connect():
-    """Send initial status to a newly connected client."""
-    print('Client connected. Sending initial status.')
-    # Perform an initial check for the new client in a background task
-    socketio.start_background_task(check_for_changes)
+    """Handle client connection"""
+    print(f"Client connected: {request.sid}")
+    # Send current status immediately
+    if last_status["has_order_button"] is not None:
+        socketio.emit('status_update', last_status, room=request.sid)
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print('Client disconnected')
+    """Handle client disconnection"""
+    print(f"Client disconnected: {request.sid}")
+
+# Get port from environment or use default
+port = int(os.environ.get('PORT', 5001))
 
 if __name__ == '__main__':
-    # Get port from environment variable (for web deployment)
-    port = int(os.environ.get('PORT', 5001))
-    
     print(f"TeslaStokTakip starting on port {port}")
     print(f"Tesla URLs: {TESLA_URLS}")
-    
-    # Start Flask app
-    socketio.run(app, debug=False, host='0.0.0.0', port=port, log_output=True) 
+    socketio.run(app, host='0.0.0.0', port=port, debug=False) 
