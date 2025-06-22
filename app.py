@@ -10,6 +10,10 @@ import time
 from datetime import datetime
 import threading
 import os
+import urllib3
+
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'tesla_monitor_secret_key'
@@ -49,7 +53,9 @@ def get_page_content():
         }
         
         print(f"Fetching Tesla page: {TESLA_URL}")
-        response = requests.get(TESLA_URL, headers=headers, timeout=30)
+        
+        # Disable SSL verification for development
+        response = requests.get(TESLA_URL, headers=headers, timeout=30, verify=False)
         response.raise_for_status()
         
         print(f"Page fetched successfully, content length: {len(response.text)}")
@@ -60,6 +66,9 @@ def get_page_content():
         return None
     except requests.exceptions.ConnectionError as e:
         print(f"Connection error while fetching Tesla page: {e}")
+        return None
+    except requests.exceptions.SSLError as e:
+        print(f"SSL error while fetching Tesla page: {e}")
         return None
     except Exception as e:
         print(f"Error fetching page: {e}")
@@ -123,15 +132,15 @@ def save_snapshot(content, has_order_button, has_availability):
     
     return content_hash
 
-def check_for_changes():
-    """Main monitoring function"""
+def perform_check():
+    """Perform the actual Tesla page check without WebSocket emissions"""
     try:
         print(f"Checking Tesla page at {datetime.now()}")
         
         content = get_page_content()
         if not content:
             print("No content received from Tesla page")
-            return
+            return None
         
         has_order_button, has_availability = analyze_content(content)
         content_hash = save_snapshot(content, has_order_button, has_availability)
@@ -148,40 +157,63 @@ def check_for_changes():
         results = cursor.fetchall()
         conn.close()
         
+        changes = []
         if len(results) >= 2:
             prev_hash, prev_order, prev_availability = results[1]
             
             # Check for changes
-            changes = []
-            
             if content_hash != prev_hash:
                 changes.append("Sayfa içeriği değişti")
             
             if has_order_button and not prev_order:
                 changes.append("Sipariş butonu eklendi!")
+            
+            if has_availability and not prev_availability:
+                changes.append("Stok durumu değişti!")
+        
+        print(f"Check completed - Order: {has_order_button}, Availability: {has_availability}")
+        
+        return {
+            'has_order_button': has_order_button,
+            'has_availability': has_availability,
+            'changes': changes,
+            'content_hash': content_hash
+        }
+        
+    except Exception as e:
+        print(f"Error in perform_check: {e}")
+        return None
+
+def check_for_changes():
+    """Main monitoring function with WebSocket notifications"""
+    try:
+        result = perform_check()
+        if result is None:
+            return
+        
+        # Send WebSocket notifications
+        if result['changes']:
+            change_message = " | ".join(result['changes'])
+            
+            if "Sipariş butonu eklendi!" in result['changes']:
                 socketio.emit('order_available', {
                     'message': 'Tesla Model Y siparişi artık mevcut!',
                     'timestamp': datetime.now().isoformat()
                 })
             
-            if has_availability and not prev_availability:
-                changes.append("Stok durumu değişti!")
+            if "Stok durumu değişti!" in result['changes']:
                 socketio.emit('stock_change', {
                     'message': 'Tesla Model Y stok durumu güncellendi!',
                     'timestamp': datetime.now().isoformat()
                 })
             
-            if changes:
-                change_message = " | ".join(changes)
-                socketio.emit('page_change', {
-                    'message': change_message,
-                    'timestamp': datetime.now().isoformat(),
-                    'has_order_button': has_order_button,
-                    'has_availability': has_availability
-                })
-                print(f"Changes detected: {change_message}")
-        
-        print(f"Check completed - Order: {has_order_button}, Availability: {has_availability}")
+            socketio.emit('page_change', {
+                'message': change_message,
+                'timestamp': datetime.now().isoformat(),
+                'has_order_button': result['has_order_button'],
+                'has_availability': result['has_availability']
+            })
+            print(f"Changes detected: {change_message}")
         
     except Exception as e:
         print(f"Error in check_for_changes: {e}")
@@ -263,11 +295,22 @@ def manual_check():
     """Trigger manual check of Tesla page"""
     try:
         print("Manual check triggered")
-        check_for_changes()
+        result = perform_check()
+        
+        if result is None:
+            return jsonify({
+                'success': False,
+                'message': 'Tesla sayfasından veri alınamadı',
+                'timestamp': datetime.now().isoformat()
+            }), 500
+        
         return jsonify({
             'success': True,
             'message': 'Manuel kontrol tamamlandı',
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'has_order_button': result['has_order_button'],
+            'has_availability': result['has_availability'],
+            'changes': result['changes']
         })
     except Exception as e:
         print(f"Manual check error: {e}")
