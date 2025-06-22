@@ -17,10 +17,15 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'tesla_monitor_secret_key'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60, ping_interval=25)
 
-# Tesla Model Y URL
-TESLA_URL = "https://www.tesla.com/tr_TR/modely/design#overview"
+# Tesla Model Y URL - Try different URLs if one fails
+TESLA_URLS = [
+    "https://www.tesla.com/tr_TR/modely/design#overview",
+    "https://www.tesla.com/tr_tr/model-y/design",
+    "https://www.tesla.com/tr_TR/modely",
+    "https://www.tesla.com/tr_tr/modely"
+]
 
 # Database setup
 def init_db():
@@ -42,37 +47,42 @@ def init_db():
 
 def get_page_content():
     """Fetch Tesla Model Y page content"""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'Connection': 'keep-alive',
-            'Upgrade-Insecure-Requests': '1'
-        }
-        
-        print(f"Fetching Tesla page: {TESLA_URL}")
-        
-        # Disable SSL verification for development
-        response = requests.get(TESLA_URL, headers=headers, timeout=30, verify=False)
-        response.raise_for_status()
-        
-        print(f"Page fetched successfully, content length: {len(response.text)}")
-        return response.text
-        
-    except requests.exceptions.Timeout:
-        print("Timeout error while fetching Tesla page")
-        return None
-    except requests.exceptions.ConnectionError as e:
-        print(f"Connection error while fetching Tesla page: {e}")
-        return None
-    except requests.exceptions.SSLError as e:
-        print(f"SSL error while fetching Tesla page: {e}")
-        return None
-    except Exception as e:
-        print(f"Error fetching page: {e}")
-        return None
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+    }
+    
+    print(f"Trying Tesla URLs: {TESLA_URLS}")
+    
+    # Try each URL until one works
+    for url in TESLA_URLS:
+        try:
+            print(f"Trying URL: {url}")
+            response = requests.get(url, headers=headers, timeout=30, verify=False)
+            response.raise_for_status()
+            
+            print(f"Page fetched successfully from {url}, content length: {len(response.text)}")
+            return response.text
+            
+        except requests.exceptions.Timeout:
+            print(f"Timeout error while fetching Tesla page from {url}")
+            continue
+        except requests.exceptions.ConnectionError as e:
+            print(f"Connection error while fetching Tesla page from {url}: {e}")
+            continue
+        except requests.exceptions.SSLError as e:
+            print(f"SSL error while fetching Tesla page from {url}: {e}")
+            continue
+        except Exception as e:
+            print(f"Error fetching page from {url}: {e}")
+            continue
+    
+    print("All Tesla pages failed to load")
+    return None
 
 def analyze_content(content):
     """Analyze page content for order button and availability"""
@@ -333,5 +343,8 @@ if __name__ == '__main__':
     # Get port from environment variable (for web deployment)
     port = int(os.environ.get('PORT', 5001))
     
+    print(f"Teslat starting on port {port}")
+    print(f"Tesla URLs: {TESLA_URLS}")
+    
     # Start Flask app
-    socketio.run(app, debug=False, host='0.0.0.0', port=port) 
+    socketio.run(app, debug=False, host='0.0.0.0', port=port, log_output=True) 

@@ -16,7 +16,13 @@ class TeslaMonitor {
     }
 
     connectWebSocket() {
-        this.socket = io();
+        this.socket = io({
+            transports: ['websocket', 'polling'],
+            timeout: 60000,
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000
+        });
         
         this.socket.on('connect', () => {
             this.updateConnectionStatus(true);
@@ -25,7 +31,20 @@ class TeslaMonitor {
 
         this.socket.on('disconnect', () => {
             this.updateConnectionStatus(false);
-            this.addNotification('Bağlantı kesildi', 'error');
+            this.addNotification('Bağlantı kesildi, yeniden bağlanılıyor...', 'warning');
+        });
+
+        this.socket.on('connect_error', (error) => {
+            console.error('WebSocket connection error:', error);
+            this.addNotification('Bağlantı hatası: ' + error.message, 'error');
+        });
+
+        this.socket.on('reconnect', (attemptNumber) => {
+            this.addNotification(`Yeniden bağlandı (${attemptNumber}. deneme)`, 'success');
+        });
+
+        this.socket.on('reconnect_failed', () => {
+            this.addNotification('Yeniden bağlanma başarısız', 'error');
         });
 
         this.socket.on('status', (data) => {
