@@ -5,18 +5,11 @@ import requests
 import urllib3
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO
 from bs4 import BeautifulSoup
 from apscheduler.schedulers.background import BackgroundScheduler
 import warnings
 import random
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -71,97 +64,25 @@ def init_db():
     print("Database initialized")
 
 def get_page_content():
-    """Fetch Tesla Model Y page content with Selenium."""
-    
-    # Check if we're on Render (headless environment)
-    if os.environ.get('RENDER'):
-        # Use requests as fallback on Render
-        return get_page_content_requests()
-    
-    try:
-        # Setup Chrome options for headless browsing
-        chrome_options = Options()
-        chrome_options.add_argument("--headless")
-        chrome_options.add_argument("--no-sandbox")
-        chrome_options.add_argument("--disable-dev-shm-usage")
-        chrome_options.add_argument("--disable-gpu")
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        
-        # Fix ARM64 architecture issue
-        import platform
-        if platform.machine() == 'arm64':
-            # Use system Chrome on ARM64
-            chrome_options.binary_location = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-            service = Service("/usr/local/bin/chromedriver" if os.path.exists("/usr/local/bin/chromedriver") else None)
-        else:
-            # Use webdriver-manager for Intel
-            service = Service(ChromeDriverManager().install())
-        
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        
-        print(f"Trying Tesla URLs with Selenium...")
-        
-        for url in TESLA_URLS:
-            try:
-                print(f"Trying URL: {url}")
-                driver.get(url)
-                
-                # Wait for page to load
-                WebDriverWait(driver, 10).until(
-                    EC.presence_of_element_located((By.TAG_NAME, "body"))
-                )
-                
-                # Get page content
-                content = driver.page_source
-                print(f"Page fetched successfully from {url}")
-                driver.quit()
-                return content
-                
-            except Exception as e:
-                print(f"Failed to fetch {url}. Error: {e}")
-                continue
-        
-        driver.quit()
-        print("All Tesla pages failed to load with Selenium.")
-        return None
-        
-    except Exception as e:
-        print(f"Selenium setup failed: {e}")
-        return get_page_content_requests()
-
-def get_page_content_requests():
-    """Fallback method using requests."""
+    """Fetch Tesla Model Y page content with requests."""
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
     }
-    
     print(f"Trying Tesla URLs with requests...")
-    timeouts = [15, 25, 35]
-    
-    for url in TESLA_URLS:
-        for timeout in timeouts:
-            try:
-                print(f"Trying URL: {url} with timeout: {timeout}s")
-                session = requests.Session()
-                session.headers.update(headers)
-                
-                # Fix SSL verification issues
-                session.verify = False
-                session.trust_env = False
-                
-                response = session.get(url, timeout=timeout, allow_redirects=True)
-                response.raise_for_status()
-                print(f"Page fetched successfully from {url}")
-                return response.text
-            except Exception as e:
-                print(f"Failed to fetch {url} with timeout {timeout}s. Error: {e}")
-                continue
-    
-    print("All Tesla pages failed to load.")
-    return None
+    url = TESLA_URLS[0]
+    try:
+        print(f"Trying URL: {url}")
+        response = requests.get(url, headers=headers, timeout=30, allow_redirects=True, verify=False)
+        response.raise_for_status()
+        print(f"Page fetched successfully from {url}")
+        return response.text
+    except Exception as e:
+        print(f"Failed to fetch {url}. Error: {e}")
+        return None
 
 def analyze_content(content):
     """Analyze page content for order button and availability"""

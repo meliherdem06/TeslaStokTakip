@@ -1,65 +1,47 @@
 # Tesla Stok Takip
 
-Tesla Model Y araçlarının Türkiye'deki stok durumunu gerçek zamanlı olarak takip eden web uygulaması.
+Tesla Model Y stok ve sipariş durumunu takip eden web uygulaması.
 
 ## 🚗 Özellikler
 
-- **Gerçek Zamanlı Takip**: Tesla Türkiye sayfasını 5 dakikada bir kontrol eder
-- **Anlık Bildirimler**: Stok durumu değiştiğinde sesli ve görsel bildirimler
-- **Manuel Kontrol**: İsteğe bağlı manuel kontrol butonu
-- **Geçmiş Takibi**: Stok durumu geçmişini görüntüleme
-- **WebSocket Bağlantısı**: Gerçek zamanlı güncellemeler
-- **Responsive Tasarım**: Mobil ve masaüstü uyumlu
+- **Gerçek Zamanlı Takip**: Tesla Türkiye web sitesinden otomatik veri çekme
+- **Anlık Bildirimler**: Sesli bildirimler
+- **Manuel Kontrol**: Manuel kontrol butonu
+- **Geçmiş Takibi**: Geçmiş verileri görüntüleme
+- **Responsive Tasarım**: Mobil uyumlu arayüz
 
 ## 🛠️ Teknolojiler
 
-- **Backend**: Python Flask, Flask-SocketIO
-- **Frontend**: HTML5, CSS3, JavaScript, Chart.js
+- **Backend**: Python, Flask, Flask-SocketIO
+- **Frontend**: HTML, CSS, JavaScript
 - **Veritabanı**: SQLite
 - **Web Scraping**: BeautifulSoup, Requests
 - **Deployment**: Render
 
 ## 📦 Kurulum
 
-### Gereksinimler
-- Python 3.9+
-- pip
-
-### Adımlar
-
-1. **Projeyi klonlayın:**
-   ```bash
-   git clone https://github.com/kullaniciadi/TeslaStokTakip.git
-   cd TeslaStokTakip
+1. **Gereksinimler**:
+   ```
+   Flask==3.0.0
+   Flask-SocketIO==5.3.6
+   requests==2.31.0
+   BeautifulSoup4==4.12.3
+   APScheduler==3.10.4
+   urllib3==2.2.1
+   gunicorn==22.0.0
    ```
 
-2. **Sanal ortam oluşturun:**
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # Linux/Mac
-   # veya
-   venv\Scripts\activate  # Windows
-   ```
-
-3. **Bağımlılıkları yükleyin:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Uygulamayı çalıştırın:**
+2. **Çalıştırma**:
    ```bash
    python app.py
    ```
 
-5. **Tarayıcıda açın:**
-   ```
-   http://localhost:5001
-   ```
+3. **Tarayıcıda açın**: `http://localhost:5001`
 
 ## 🌐 Canlı Demo
 
 Uygulama şu adreste canlı olarak çalışmaktadır:
-[https://tesla-stok-takip.onrender.com](https://tesla-stok-takip.onrender.com)
+[https://teslastoktakip.onrender.com](https://teslastoktakip.onrender.com)
 
 ## 📊 Nasıl Çalışır?
 
@@ -72,20 +54,15 @@ Uygulama şu adreste canlı olarak çalışmaktadır:
 ## 🔧 API Endpoints
 
 - `GET /` - Ana sayfa
-- `GET /api/status` - Mevcut durum bilgisi
+- `GET /api/status` - Mevcut durum
+- `POST /manual_check` - Manuel kontrol
 - `GET /api/history` - Geçmiş veriler
-- `POST /api/manual-check` - Manuel kontrol
 
-## 🚀 Deployment
+## 🚀 Deployment (Render)
 
-### Render'da Deploy Etme
-
-1. **Render hesabı oluşturun** ve GitHub reponuzu bağlayın
-2. **Yeni Web Service** oluşturun
-3. **Build Command**: `pip install -r requirements.txt`
-4. **Start Command**: `gunicorn --worker-class eventlet -w 1 app:app`
-5. **Environment Variables**:
-   - `PORT`: `10000`
+1. **Build Command**: `pip install -r requirements.txt`
+2. **Start Command**: `gunicorn -w 1 app:app`
+3. **Python Version**: 3.9.16
 
 ## 📝 Lisans
 
@@ -101,11 +78,24 @@ Bu proje MIT lisansı altında lisanslanmıştır.
 
 ## 📞 İletişim
 
-- **Proje Sahibi**: [GitHub Profiliniz]
-- **Email**: [Email Adresiniz]
+- **Proje Sahibi**: [meliherdem06]
+- **Email**: [meliherddem@gmail.com]
 
 ## 🙏 Teşekkürler
 
 - Tesla Türkiye
 - Flask ve Flask-SocketIO geliştiricileri
 - Render hosting platformu 
+
+## WebSocket Events
+
+- `connect` - Bağlantı kurulduğunda
+- `disconnect` - Bağlantı kesildiğinde
+- `status_update` - Durum güncellendiğinde
+
+## Veritabanı
+
+SQLite veritabanı (`tesla_stok_takip.db`) şu tabloları içerir:
+
+- `page_snapshots`: Sayfa anlık görüntüleri
+- `status_changes`: Durum değişiklikleri
