@@ -135,11 +135,10 @@ class TeslaStokTakip {
     }
 
     updateStatus(data) {
-        // Update order status
         const orderStatus = document.getElementById('orderStatus');
         const orderStatusIcon = document.getElementById('orderStatusIcon');
         
-        if (data.has_order_button === null) {
+        if (data.has_order_button === null || data.has_order_button === undefined) {
             orderStatus.textContent = 'Bilinmiyor';
             orderStatusIcon.className = 'status-icon order-status';
         } else if (data.has_order_button) {
@@ -154,7 +153,7 @@ class TeslaStokTakip {
         const stockStatus = document.getElementById('stockStatus');
         const stockStatusIcon = document.getElementById('stockStatusIcon');
         
-        if (data.has_availability === null) {
+        if (data.has_availability === null || data.has_availability === undefined) {
             stockStatus.textContent = 'Bilinmiyor';
             stockStatusIcon.className = 'status-icon stock-status';
         } else if (data.has_availability) {
@@ -168,8 +167,11 @@ class TeslaStokTakip {
         // Update last check time
         const lastCheck = document.getElementById('lastCheck');
         if (data.last_check_time) {
+            // Check if the timestamp is a full ISO string or just a date
             const date = new Date(data.last_check_time);
             lastCheck.textContent = date.toLocaleString('tr-TR');
+        } else {
+            lastCheck.textContent = 'Henüz kontrol edilmedi';
         }
     }
 

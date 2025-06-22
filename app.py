@@ -9,6 +9,7 @@ from flask_socketio import SocketIO, emit
 from bs4 import BeautifulSoup
 from apscheduler.schedulers.background import BackgroundScheduler
 import warnings
+import random
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -39,18 +40,12 @@ TESLA_URLS = [
 ]
 
 # Headers for requests
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Cache-Control': 'no-cache'
-}
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
+    'Mozilla/5.0 (X11; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0'
+]
 
 # Database setup
 def init_db():
@@ -73,57 +68,31 @@ def init_db():
     print("Database initialized")
 
 def get_page_content():
-    """Fetch Tesla Model Y page content with improved error handling"""
+    """Fetch Tesla Model Y page content with rotating user-agents."""
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': random.choice(USER_AGENTS),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'no-cache'
     }
     
-    print(f"Trying Tesla URLs: {TESLA_URLS}")
-    
-    # Try each URL with different timeouts
-    timeouts = [10, 15, 20, 30]
+    print(f"Trying Tesla URLs with User-Agent: {headers['User-Agent']}")
+    timeouts = [15, 25, 35]
     
     for url in TESLA_URLS:
         for timeout in timeouts:
             try:
                 print(f"Trying URL: {url} with timeout: {timeout}s")
-                
-                # Use session for better connection handling
                 session = requests.Session()
                 session.headers.update(headers)
-                
                 response = session.get(url, timeout=timeout, verify=False, allow_redirects=True)
                 response.raise_for_status()
-                
-                print(f"Page fetched successfully from {url}, content length: {len(response.text)}")
+                print(f"Page fetched successfully from {url}")
                 return response.text
-                
-            except requests.exceptions.Timeout:
-                print(f"Timeout error ({timeout}s) while fetching Tesla page from {url}")
-                continue
-            except requests.exceptions.ConnectionError as e:
-                print(f"Connection error while fetching Tesla page from {url}: {e}")
-                continue
-            except requests.exceptions.SSLError as e:
-                print(f"SSL error while fetching Tesla page from {url}: {e}")
-                continue
-            except requests.exceptions.HTTPError as e:
-                print(f"HTTP error while fetching Tesla page from {url}: {e}")
-                continue
             except Exception as e:
-                print(f"Unexpected error fetching page from {url}: {e}")
+                print(f"Failed to fetch {url} with timeout {timeout}s. Error: {e}")
                 continue
     
-    print("All Tesla pages failed to load after trying all URLs and timeouts")
+    print("All Tesla pages failed to load.")
     return None
 
 def analyze_content(content):
@@ -253,34 +222,53 @@ def perform_check():
         print(f"Status unchanged: {last_status}")
         return None
 
+def get_last_known_status_from_db():
+    """Fetches the most recent successful snapshot from the database."""
+    conn = sqlite3.connect('tesla_stok_takip.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT timestamp, has_order_button, has_availability 
+        FROM page_snapshots 
+        ORDER BY timestamp DESC 
+        LIMIT 1
+    ''')
+    result = cursor.fetchone()
+    conn.close()
+    if result:
+        timestamp, has_order, has_avail = result
+        return {
+            'last_check_time': timestamp,
+            'has_order_button': has_order,
+            'has_availability': has_avail
+        }
+    return None
+
 def check_for_changes():
-    """Main monitoring function with WebSocket notifications."""
+    """Main monitoring function. Emits status via WebSocket."""
     try:
         new_status = perform_check()
-        
         if new_status:
-            # Status changed
             socketio.emit('status_update', {
                 'message': 'Tesla Model Y durumunda değişiklik tespit edildi!',
                 'last_check_time': last_check_time.isoformat(),
                 **new_status
             })
         else:
-            # No changes
-             socketio.emit('check_complete', {
-                'message': 'Kontrol tamamlandı - Değişiklik yok',
-                'last_check_time': last_check_time.isoformat() if last_check_time else datetime.now().isoformat(),
+            socketio.emit('check_complete', {
+                'message': 'Kontrol tamamlandı - Değişiklik yok.',
+                'last_check_time': last_check_time.isoformat(),
                 **last_status
             })
-
     except ConnectionError as e:
         print(f"Connection error in check_for_changes: {e}")
-        socketio.emit('status_update', {
-            'message': 'Tesla sayfasına bağlanılamıyor. Ağ bağlantınızı kontrol edin.',
-            'last_check_time': datetime.now().isoformat(),
-            'has_order_button': None, 
-            'has_availability': None
-        })
+        last_known = get_last_known_status_from_db()
+        if last_known:
+            socketio.emit('status_update', {
+                'message': f"Yeni veri alınamıyor. Son başarılı kontrol: {last_known['last_check_time']}",
+                **last_known
+            })
+        else:
+            socketio.emit('status_update', {'message': 'Tesla sayfasına bağlanılamıyor ve veritabanında eski kayıt bulunamadı.'})
     except Exception as e:
         print(f"Error in check_for_changes: {e}")
         socketio.emit('status_update', {
@@ -338,7 +326,7 @@ def get_history():
 
 @app.route('/manual_check', methods=['POST'])
 def manual_check():
-    """Manual check endpoint"""
+    """Manual check endpoint."""
     try:
         print("Manual check requested")
         new_status = perform_check()
@@ -360,13 +348,15 @@ def manual_check():
             
     except ConnectionError as e:
         print(f"Connection error in manual_check: {e}")
-        socketio.emit('status_update', {
-            'message': 'Tesla sayfasına bağlanılamıyor. Ağ bağlantınızı kontrol edin.',
-            'last_check_time': datetime.now().isoformat(),
-            'has_order_button': None,
-            'has_availability': None
-        })
-        return jsonify({'success': False, 'message': 'Tesla sayfasına bağlanılamıyor.'}), 503
+        last_known = get_last_known_status_from_db()
+        if last_known:
+             socketio.emit('status_update', {
+                'message': f"Yeni veri alınamıyor. Son başarılı kontrol: {last_known['last_check_time']}",
+                **last_known
+            })
+             return jsonify({'success': False, 'message': 'Tesla sayfasına bağlanılamıyor. Son bilinen durum gösteriliyor.'}), 503
+        else:
+            return jsonify({'success': False, 'message': 'Tesla sayfasına bağlanılamıyor ve veritabanında eski kayıt bulunamadı.'}), 503
     except Exception as e:
         print(f"Error in manual check: {e}")
         return jsonify({'success': False, 'message': f'Manuel kontrol hatası: {str(e)}'}), 500
