@@ -35,11 +35,11 @@ TESLA_URLS = [
 ]
 
 # Test mode - when Tesla website is unreachable
-TEST_MODE = True
-CURRENT_TEST_SCENARIO = 'no_stock'  # Default scenario
+TEST_MODE = False
 
 # Database setup
 def init_db():
+    """Initialize database with tables"""
     conn = sqlite3.connect('tesla_stok_takip.db')
     cursor = conn.cursor()
     cursor.execute('''
@@ -55,76 +55,10 @@ def init_db():
     ''')
     conn.commit()
     conn.close()
-
-def get_test_content():
-    """Generate test content when Tesla website is unreachable"""
-    global CURRENT_TEST_SCENARIO
-    
-    # Define test scenarios
-    scenarios = {
-        'no_stock': {
-            'content': '''
-            <html>
-            <body>
-                <h1>Tesla Model Y</h1>
-                <p>Şu anda stokta değil</p>
-                <div>Bilgi alın</div>
-                <span>Stok durumu: Mevcut değil</span>
-                <p>Güncellemeleri al</p>
-            </body>
-            </html>
-            ''',
-            'has_order': False,
-            'has_stock': False,
-            'description': 'Stok yok - Sipariş yok (Gerçek durum)'
-        },
-        'pre_order': {
-            'content': '''
-            <html>
-            <body>
-                <h1>Tesla Model Y</h1>
-                <p>Ön sipariş</p>
-                <div>Rezervasyon yapın</div>
-                <span>Stok durumu: Ön sipariş</span>
-            </body>
-            </html>
-            ''',
-            'has_order': True,
-            'has_stock': False,
-            'description': 'Ön sipariş mevcut - Stok yok'
-        },
-        'stock_available': {
-            'content': '''
-            <html>
-            <body>
-                <h1>Tesla Model Y</h1>
-                <button>Sipariş Ver</button>
-                <p>Stokta mevcut</p>
-                <div>Hemen sipariş verin</div>
-                <span>Stok durumu: Mevcut</span>
-            </body>
-            </html>
-            ''',
-            'has_order': True,
-            'has_stock': True,
-            'description': 'STOK MEVCUT! - Sipariş mevcut'
-        }
-    }
-    
-    # Get the current scenario
-    scenario = scenarios.get(CURRENT_TEST_SCENARIO, scenarios['no_stock'])
-    
-    print(f"Test mode: {scenario['description']}")
-    return scenario['content'], scenario['has_order'], scenario['has_stock']
+    print("Database initialized")
 
 def get_page_content():
     """Fetch Tesla Model Y page content with improved error handling"""
-    # If test mode is enabled, return test content
-    if TEST_MODE:
-        print("Using test mode - generating simulated Tesla page content")
-        content, has_order, has_stock = get_test_content()
-        return content
-    
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
@@ -190,32 +124,71 @@ def analyze_content(content):
         'satın al',
         'buy now',
         'order',
-        'sipariş'
+        'sipariş',
+        'purchase'
     ]
     
-    # Check for availability indicators
+    # Check for availability indicators (positive)
     availability_indicators = [
         'stokta',
         'available',
         'mevcut',
         'in stock',
         'teslim',
-        'delivery'
+        'delivery',
+        'hazır',
+        'ready'
+    ]
+    
+    # Check for NO availability indicators (negative)
+    no_availability_indicators = [
+        'güncellemeleri al',
+        'get updates',
+        'stokta değil',
+        'not available',
+        'out of stock',
+        'bekleme listesi',
+        'waitlist',
+        'ön sipariş',
+        'pre-order',
+        'bilgi al',
+        'get info'
     ]
     
     page_text = soup.get_text().lower()
     
+    # Check for order button
     has_order_button = any(indicator in page_text for indicator in order_indicators)
-    has_availability = any(indicator in page_text for indicator in availability_indicators)
+    
+    # Check for availability - prioritize negative indicators
+    has_availability = False
+    has_no_availability = any(indicator in page_text for indicator in no_availability_indicators)
+    
+    if has_no_availability:
+        has_availability = False
+    else:
+        has_availability = any(indicator in page_text for indicator in availability_indicators)
     
     # Also check for specific button elements
-    buttons = soup.find_all(['button', 'a'])
+    buttons = soup.find_all(['button', 'a', 'div'])
     for button in buttons:
         button_text = button.get_text().lower()
+        
+        # Check for order buttons
         if any(indicator in button_text for indicator in order_indicators):
             has_order_button = True
+        
+        # Check for availability buttons
         if any(indicator in button_text for indicator in availability_indicators):
-            has_availability = True
+            if not has_no_availability:  # Only if no negative indicators found
+                has_availability = True
+        
+        # Check for NO availability buttons (these override positive indicators)
+        if any(indicator in button_text for indicator in no_availability_indicators):
+            has_availability = False
+            has_no_availability = True
+    
+    print(f"Content analysis - Order button: {has_order_button}, Availability: {has_availability}, No availability indicators: {has_no_availability}")
     
     return has_order_button, has_availability
 
@@ -236,53 +209,54 @@ def save_snapshot(content, has_order_button, has_availability):
     return content_hash
 
 def perform_check():
-    """Perform the actual Tesla page check without WebSocket emissions"""
+    """Perform the actual check without WebSocket emissions"""
+    global last_check_time, last_status
+    
     try:
         print(f"Checking Tesla page at {datetime.now()}")
         
-        content = get_page_content()
+        # Try multiple Tesla URLs
+        content = None
+        for url in TESLA_URLS:
+            try:
+                response = requests.get(url, headers=HEADERS, timeout=30, verify=False)
+                if response.status_code == 200:
+                    content = response.text
+                    print(f"Successfully fetched content from {url}")
+                    break
+                else:
+                    print(f"Failed to fetch {url}, status code: {response.status_code}")
+            except Exception as e:
+                print(f"Error fetching {url}: {e}")
+                continue
+        
         if not content:
-            print("No content received from Tesla page")
-            return None
+            print("Could not fetch content from any Tesla URL")
+            return
         
+        # Analyze content
         has_order_button, has_availability = analyze_content(content)
-        content_hash = save_snapshot(content, has_order_button, has_availability)
         
-        # Get previous snapshot for comparison
-        conn = sqlite3.connect('tesla_stok_takip.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT content_hash, has_order_button, has_availability 
-            FROM page_snapshots 
-            ORDER BY timestamp DESC 
-            LIMIT 2
-        ''')
-        results = cursor.fetchall()
-        conn.close()
+        # Determine status
+        if has_order_button and has_availability:
+            status = "Stock Available"
+        elif has_order_button and not has_availability:
+            status = "Pre-order Available"
+        else:
+            status = "No Stock"
         
-        changes = []
-        if len(results) >= 2:
-            prev_hash, prev_order, prev_availability = results[1]
+        # Update last check time
+        last_check_time = datetime.now()
+        
+        # Check if status changed
+        if last_status != status:
+            print(f"Status changed from '{last_status}' to '{status}'")
+            last_status = status
+            return status
+        else:
+            print(f"Status unchanged: {status}")
+            return None
             
-            # Check for changes
-            if content_hash != prev_hash:
-                changes.append("Sayfa içeriği değişti")
-            
-            if has_order_button and not prev_order:
-                changes.append("Sipariş butonu eklendi!")
-            
-            if has_availability and not prev_availability:
-                changes.append("Stok durumu değişti!")
-        
-        print(f"Check completed - Order: {has_order_button}, Availability: {has_availability}")
-        
-        return {
-            'has_order_button': has_order_button,
-            'has_availability': has_availability,
-            'changes': changes,
-            'content_hash': content_hash
-        }
-        
     except Exception as e:
         print(f"Error in perform_check: {e}")
         return None
@@ -324,36 +298,23 @@ def check_for_changes():
             return
         
         # Send WebSocket notifications for successful checks
-        if result['changes']:
-            change_message = " | ".join(result['changes'])
-            
-            if "Sipariş butonu eklendi!" in result['changes']:
-                socketio.emit('order_available', {
-                    'message': '🚗 TESLA MODEL Y SİPARİŞİ MEVCUT! 🚗',
-                    'timestamp': datetime.now().isoformat()
-                })
-            
-            if "Stok durumu değişti!" in result['changes']:
-                socketio.emit('stock_change', {
-                    'message': '📦 Tesla Model Y stok durumu güncellendi!',
-                    'timestamp': datetime.now().isoformat()
-                })
-            
-            socketio.emit('page_change', {
-                'message': change_message,
+        if result:
+            socketio.emit('status_update', {
                 'timestamp': datetime.now().isoformat(),
-                'has_order_button': result['has_order_button'],
-                'has_availability': result['has_availability']
+                'status': result,
+                'message': f'Tesla Model Y stok durumu güncellendi!',
+                'has_order_button': has_order_button,
+                'has_availability': has_availability
             })
-            print(f"Changes detected: {change_message}")
+            print(f"Status changed: {result}")
         else:
             # No changes but successful check
             socketio.emit('status_update', {
                 'timestamp': datetime.now().isoformat(),
                 'status': 'no_changes',
                 'message': 'Kontrol tamamlandı - Değişiklik yok',
-                'has_order_button': result['has_order_button'],
-                'has_availability': result['has_availability']
+                'has_order_button': has_order_button,
+                'has_availability': has_availability
             })
         
     except Exception as e:
@@ -392,36 +353,15 @@ scheduler.start()
 
 @app.route('/')
 def index():
+    """Main page"""
     return render_template('index.html')
 
 @app.route('/api/status')
 def get_status():
-    """Get current monitoring status"""
-    conn = sqlite3.connect('tesla_stok_takip.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT timestamp, has_order_button, has_availability 
-        FROM page_snapshots 
-        ORDER BY timestamp DESC 
-        LIMIT 1
-    ''')
-    result = cursor.fetchone()
-    conn.close()
-    
-    if result:
-        timestamp, has_order_button, has_availability = result
-        return jsonify({
-            'last_check': timestamp,
-            'has_order_button': has_order_button,
-            'has_availability': has_availability,
-            'monitoring_active': scheduler.running
-        })
-    
+    """Get current status"""
     return jsonify({
-        'last_check': None,
-        'has_order_button': False,
-        'has_availability': False,
-        'monitoring_active': scheduler.running
+        'last_check_time': last_check_time.isoformat() if last_check_time else None,
+        'last_status': last_status
     })
 
 @app.route('/api/history')
@@ -440,179 +380,52 @@ def get_history():
     
     history = []
     for row in results:
+        timestamp, has_order_button, has_availability = row
         history.append({
-            'timestamp': row[0],
-            'has_order_button': row[1],
-            'has_availability': row[2]
+            'timestamp': timestamp,
+            'has_order_button': has_order_button,
+            'has_availability': has_availability
         })
     
     return jsonify(history)
 
-@app.route('/api/toggle-test-mode', methods=['POST'])
-def toggle_test_mode():
-    """Toggle test mode on/off"""
-    global TEST_MODE
-    try:
-        data = request.get_json()
-        if data and 'enabled' in data:
-            TEST_MODE = data['enabled']
-            status = "etkinleştirildi" if TEST_MODE else "devre dışı bırakıldı"
-            return jsonify({
-                'success': True,
-                'message': f'Test modu {status}',
-                'test_mode': TEST_MODE,
-                'timestamp': datetime.now().isoformat()
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': 'Geçersiz parametre',
-                'timestamp': datetime.now().isoformat()
-            }), 400
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Hata: {str(e)}',
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/api/test-mode-status')
-def get_test_mode_status():
-    """Get current test mode status"""
-    return jsonify({
-        'test_mode': TEST_MODE,
-        'message': 'Test modu etkin' if TEST_MODE else 'Test modu devre dışı'
-    })
-
-@app.route('/api/test-scenario', methods=['POST'])
-def set_test_scenario():
-    """Set specific test scenario for testing"""
-    global TEST_MODE, CURRENT_TEST_SCENARIO
-    try:
-        data = request.get_json()
-        if data and 'scenario' in data:
-            scenario = data['scenario']
-            
-            # Force test mode to be enabled
-            TEST_MODE = True
-            CURRENT_TEST_SCENARIO = scenario
-            
-            print(f"Test scenario set to: {scenario}")
-            
-            return jsonify({
-                'success': True,
-                'message': f'Test senaryosu ayarlandı: {scenario}',
-                'test_mode': TEST_MODE,
-                'scenario': scenario,
-                'timestamp': datetime.now().isoformat()
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': 'Geçersiz senaryo',
-                'timestamp': datetime.now().isoformat()
-            }), 400
-    except Exception as e:
-        return jsonify({
-            'success': False,
-            'message': f'Hata: {str(e)}',
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-@app.route('/api/manual-check', methods=['POST'])
+@app.route('/manual_check', methods=['POST'])
 def manual_check():
-    """Trigger manual check of Tesla page with improved error handling"""
+    """Manual check endpoint"""
     try:
-        print("Manual check triggered")
+        print("Manual check requested")
         
-        # Check if we're in test mode
-        if TEST_MODE:
-            print("Manual check in test mode")
-            result = perform_check()
-            
-            if result is None:
-                return jsonify({
-                    'success': False,
-                    'message': 'Test modunda sayfa içeriği işlenirken hata oluştu',
-                    'timestamp': datetime.now().isoformat(),
-                    'error_type': 'processing_error'
-                }), 500
-            
-            return jsonify({
-                'success': True,
-                'message': 'Test modunda manuel kontrol tamamlandı',
-                'timestamp': datetime.now().isoformat(),
-                'has_order_button': result['has_order_button'],
-                'has_availability': result['has_availability'],
-                'changes': result['changes'],
-                'test_mode': True
-            })
-        
-        # Not in test mode - try to get real Tesla page content
-        content = get_page_content()
-        
-        if not content:
-            # Check if we have any previous data to show
-            conn = sqlite3.connect('tesla_stok_takip.db')
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT timestamp, has_order_button, has_availability 
-                FROM page_snapshots 
-                ORDER BY timestamp DESC 
-                LIMIT 1
-            ''')
-            result = cursor.fetchone()
-            conn.close()
-            
-            if result:
-                timestamp, has_order_button, has_availability = result
-                return jsonify({
-                    'success': False,
-                    'message': 'Tesla sayfasına bağlanılamıyor. Son kontrol: ' + timestamp,
-                    'timestamp': datetime.now().isoformat(),
-                    'last_known_status': {
-                        'has_order_button': has_order_button,
-                        'has_availability': has_availability,
-                        'last_check': timestamp
-                    },
-                    'error_type': 'connection_timeout'
-                }), 503  # Service Unavailable
-            else:
-                return jsonify({
-                    'success': False,
-                    'message': 'Tesla sayfasına bağlanılamıyor. Henüz hiç veri toplanmamış.',
-                    'timestamp': datetime.now().isoformat(),
-                    'error_type': 'connection_timeout'
-                }), 503
-        
-        # If we got content, process it
+        # Perform the check
         result = perform_check()
         
-        if result is None:
-            return jsonify({
-                'success': False,
-                'message': 'Sayfa içeriği işlenirken hata oluştu',
+        if result:
+            # Status changed
+            socketio.emit('status_update', {
                 'timestamp': datetime.now().isoformat(),
-                'error_type': 'processing_error'
-            }), 500
-        
-        return jsonify({
-            'success': True,
-            'message': 'Manuel kontrol tamamlandı',
-            'timestamp': datetime.now().isoformat(),
-            'has_order_button': result['has_order_button'],
-            'has_availability': result['has_availability'],
-            'changes': result['changes'],
-            'test_mode': False
-        })
-        
+                'status': result,
+                'message': f'Tesla Model Y stok durumu güncellendi!'
+            })
+            return jsonify({
+                'success': True,
+                'message': f'Manuel kontrol tamamlandı - Durum: {result}',
+                'status': result
+            })
+        else:
+            # No change
+            socketio.emit('manual_check_complete', {
+                'status': 'no_changes',
+                'message': 'Manuel kontrol tamamlandı - Değişiklik yok'
+            })
+            return jsonify({
+                'success': True,
+                'message': 'Manuel kontrol tamamlandı - Değişiklik yok'
+            })
+            
     except Exception as e:
-        print(f"Manual check error: {e}")
+        print(f"Error in manual check: {e}")
         return jsonify({
             'success': False,
-            'message': f'Beklenmeyen hata: {str(e)}',
-            'timestamp': datetime.now().isoformat(),
-            'error_type': 'unexpected_error'
+            'message': f'Manuel kontrol hatası: {str(e)}'
         }), 500
 
 @socketio.on('connect')

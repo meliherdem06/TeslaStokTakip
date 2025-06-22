@@ -123,19 +123,6 @@ class TeslaStokTakip {
         document.getElementById('clearNotifications').addEventListener('click', () => {
             this.clearNotifications();
         });
-
-        // Test mode toggle button
-        document.getElementById('toggleTestMode').addEventListener('click', () => {
-            this.toggleTestMode();
-        });
-
-        // Test scenario buttons
-        document.querySelectorAll('[data-scenario]').forEach(button => {
-            button.addEventListener('click', (e) => {
-                const scenario = e.target.closest('button').dataset.scenario;
-                this.setTestScenario(scenario);
-            });
-        });
     }
 
     updateConnectionStatus(connected) {
@@ -166,121 +153,36 @@ class TeslaStokTakip {
         const button = document.getElementById('manualCheck');
         const originalText = button.innerHTML;
         
-        button.innerHTML = '<div class="loading"></div> Kontrol Ediliyor...';
-        button.disabled = true;
-
         try {
-            const response = await fetch('/api/manual-check', {
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Kontrol Ediliyor...';
+            button.disabled = true;
+            
+            const response = await fetch('/manual_check', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 }
             });
+            
             const data = await response.json();
             
             if (data.success) {
-                this.addNotification('Manuel kontrol tamamlandı', 'success');
-                // Reload status after manual check
-                await this.loadInitialData();
-            } else {
-                // Handle different error types
-                if (data.error_type === 'connection_timeout') {
-                    this.addNotification('Tesla sayfasına bağlanılamıyor. Ağ bağlantınızı kontrol edin.', 'warning');
-                    
-                    // If we have last known status, show it
-                    if (data.last_known_status) {
-                        this.addNotification(`Son bilinen durum (${data.last_known_status.last_check}): Sipariş ${data.last_known_status.has_order_button ? 'Mevcut' : 'Yok'}, Stok ${data.last_known_status.has_availability ? 'Mevcut' : 'Yok'}`, 'info');
-                    }
-                } else if (data.error_type === 'processing_error') {
-                    this.addNotification('Sayfa verisi işlenirken hata oluştu. Lütfen tekrar deneyin.', 'error');
-                } else {
-                    this.addNotification(`Manuel kontrol hatası: ${data.message}`, 'error');
+                this.addNotification(data.message, 'success');
+                
+                // If status changed, show special notification
+                if (data.status && data.status !== 'No Stock') {
+                    this.addNotification(`🚗 TESLA MODEL Y ${data.status}! 🚗`, 'success');
+                    this.playNotificationSound();
                 }
+            } else {
+                this.addNotification(`Manuel kontrol hatası: ${data.message}`, 'error');
             }
         } catch (error) {
             console.error('Manual check error:', error);
-            this.addNotification('Manuel kontrol sırasında ağ hatası oluştu. Sunucuya bağlanılamıyor.', 'error');
+            this.addNotification('Manuel kontrol sırasında hata oluştu', 'error');
         } finally {
             button.innerHTML = originalText;
             button.disabled = false;
-        }
-    }
-
-    async toggleTestMode() {
-        const button = document.getElementById('toggleTestMode');
-        const originalText = button.innerHTML;
-        
-        try {
-            // Get current test mode status
-            const statusResponse = await fetch('/api/test-mode-status');
-            const statusData = await statusResponse.json();
-            
-            // Toggle test mode
-            const response = await fetch('/api/toggle-test-mode', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    enabled: !statusData.test_mode
-                })
-            });
-            const data = await response.json();
-            
-            if (data.success) {
-                this.addNotification(data.message, 'success');
-                
-                // Update button text
-                if (data.test_mode) {
-                    button.innerHTML = '<i class="fas fa-flask"></i> Test Modu Açık';
-                    button.classList.add('btn-success');
-                    button.classList.remove('btn-warning');
-                    
-                    // Show test scenarios
-                    document.getElementById('testScenarios').style.display = 'block';
-                } else {
-                    button.innerHTML = '<i class="fas fa-flask"></i> Test Modu';
-                    button.classList.remove('btn-success');
-                    button.classList.add('btn-warning');
-                    
-                    // Hide test scenarios
-                    document.getElementById('testScenarios').style.display = 'none';
-                }
-            } else {
-                this.addNotification(`Test modu hatası: ${data.message}`, 'error');
-            }
-        } catch (error) {
-            console.error('Test mode toggle error:', error);
-            this.addNotification('Test modu değiştirilirken hata oluştu', 'error');
-        }
-    }
-
-    async setTestScenario(scenario) {
-        try {
-            const response = await fetch('/api/test-scenario', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    scenario: scenario
-                })
-            });
-            const data = await response.json();
-            
-            if (data.success) {
-                this.addNotification(data.message, 'success');
-                
-                // Trigger manual check to see the new scenario
-                setTimeout(() => {
-                    this.manualCheck();
-                }, 1000);
-            } else {
-                this.addNotification(`Test senaryosu hatası: ${data.message}`, 'error');
-            }
-        } catch (error) {
-            console.error('Test scenario error:', error);
-            this.addNotification('Test senaryosu ayarlanırken hata oluştu', 'error');
         }
     }
 
@@ -311,8 +213,8 @@ class TeslaStokTakip {
 
         // Update last check time
         const lastCheck = document.getElementById('lastCheck');
-        if (data.last_check) {
-            const date = new Date(data.last_check);
+        if (data.last_check_time) {
+            const date = new Date(data.last_check_time);
             lastCheck.textContent = date.toLocaleString('tr-TR');
         } else {
             lastCheck.textContent = 'Henüz kontrol edilmedi';
