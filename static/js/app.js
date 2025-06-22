@@ -51,6 +51,38 @@ class TeslaStokTakip {
             this.addNotification(data.message, 'info');
         });
 
+        this.socket.on('status_update', (data) => {
+            // Handle different status types
+            switch(data.status) {
+                case 'connection_error':
+                    this.addNotification(data.message, 'warning');
+                    break;
+                case 'last_known':
+                    this.addNotification(data.message, 'info');
+                    if (data.has_order_button !== undefined && data.has_availability !== undefined) {
+                        this.updateStatus({
+                            has_order_button: data.has_order_button,
+                            has_availability: data.has_availability
+                        });
+                    }
+                    break;
+                case 'no_changes':
+                    this.addNotification(data.message, 'info');
+                    if (data.has_order_button !== undefined && data.has_availability !== undefined) {
+                        this.updateStatus({
+                            has_order_button: data.has_order_button,
+                            has_availability: data.has_availability
+                        });
+                    }
+                    break;
+                case 'error':
+                    this.addNotification(data.message, 'error');
+                    break;
+                default:
+                    this.addNotification(data.message, 'info');
+            }
+        });
+
         this.socket.on('page_change', (data) => {
             this.addNotification(data.message, 'warning');
             this.playNotificationSound();
@@ -138,11 +170,23 @@ class TeslaStokTakip {
                 // Reload status after manual check
                 await this.loadInitialData();
             } else {
-                this.addNotification(`Manuel kontrol hatası: ${data.message}`, 'error');
+                // Handle different error types
+                if (data.error_type === 'connection_timeout') {
+                    this.addNotification('Tesla sayfasına bağlanılamıyor. Ağ bağlantınızı kontrol edin.', 'warning');
+                    
+                    // If we have last known status, show it
+                    if (data.last_known_status) {
+                        this.addNotification(`Son bilinen durum (${data.last_known_status.last_check}): Sipariş ${data.last_known_status.has_order_button ? 'Mevcut' : 'Yok'}, Stok ${data.last_known_status.has_availability ? 'Mevcut' : 'Yok'}`, 'info');
+                    }
+                } else if (data.error_type === 'processing_error') {
+                    this.addNotification('Sayfa verisi işlenirken hata oluştu. Lütfen tekrar deneyin.', 'error');
+                } else {
+                    this.addNotification(`Manuel kontrol hatası: ${data.message}`, 'error');
+                }
             }
         } catch (error) {
             console.error('Manual check error:', error);
-            this.addNotification('Manuel kontrol sırasında hata oluştu', 'error');
+            this.addNotification('Manuel kontrol sırasında ağ hatası oluştu. Sunucuya bağlanılamıyor.', 'error');
         } finally {
             button.innerHTML = originalText;
             button.disabled = false;
