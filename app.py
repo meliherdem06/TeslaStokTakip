@@ -76,26 +76,28 @@ def get_page_content():
     }
     
     print(f"Trying Tesla URLs with requests...")
-    timeouts = [15, 25, 35]
     
-    for url in TESLA_URLS:
-        for timeout in timeouts:
-            try:
-                print(f"Trying URL: {url} with timeout: {timeout}s")
-                session = requests.Session()
-                session.headers.update(headers)
-                
-                # Fix SSL verification issues
-                session.verify = False
-                session.trust_env = False
-                
-                response = session.get(url, timeout=timeout, allow_redirects=True)
-                response.raise_for_status()
-                print(f"Page fetched successfully from {url}")
-                return response.text
-            except Exception as e:
-                print(f"Failed to fetch {url} with timeout {timeout}s. Error: {e}")
-                continue
+    # Try only the first few URLs to avoid too many requests
+    urls_to_try = TESLA_URLS[:3]
+    
+    for url in urls_to_try:
+        try:
+            print(f"Trying URL: {url}")
+            
+            # Create a new session for each request
+            session = requests.Session()
+            session.headers.update(headers)
+            
+            # Simple timeout without complex SSL handling
+            response = session.get(url, timeout=30, allow_redirects=True)
+            response.raise_for_status()
+            
+            print(f"Page fetched successfully from {url}")
+            return response.text
+            
+        except Exception as e:
+            print(f"Failed to fetch {url}. Error: {e}")
+            continue
     
     print("All Tesla pages failed to load.")
     return None
