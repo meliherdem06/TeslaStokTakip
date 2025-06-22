@@ -99,6 +99,43 @@
             color: #856404;
         }
 
+        .status-mock {
+            background: #e2e3e5;
+            color: #383d41;
+        }
+
+        .connection-status {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            font-size: 0.9em;
+            color: #856404;
+        }
+
+        .connection-status.connected {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+
+        .connection-status.error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+
+        .data-source {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 10px;
+            padding: 5px 10px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            display: inline-block;
+        }
+
         .last-check {
             font-size: 0.9em;
             color: #666;
@@ -225,12 +262,12 @@
     <div class="container">
         <div class="header">
             <h1>🚗 Tesla Model Y Stok Takip</h1>
-            <p>Local Selenium ile Gerçek Zamanlı Takip</p>
+            <p>Local Çalışma Modu - Gerçek Zamanlı Takip</p>
         </div>
 
         <div class="info-box">
             <h3>ℹ️ Local Çalışma Modu</h3>
-            <p>Bu uygulama şu anda <strong>sadece local bilgisayarınızda</strong> çalışmaktadır. Selenium WebDriver kullanarak Tesla'nın sitesini gerçek bir tarayıcı gibi ziyaret eder ve stok durumunu kontrol eder.</p>
+            <p>Bu uygulama şu anda <strong>sadece local bilgisayarınızda</strong> çalışmaktadır. Tesla sitesine bağlanamadığında demo veriler gösterilir.</p>
         </div>
 
         <div class="status-card">
@@ -244,6 +281,14 @@
             <div class="status-item">
                 <span class="status-label">📦 Stok Durumu:</span>
                 <span class="status-value status-unknown" id="availabilityStatus">Kontrol ediliyor...</span>
+            </div>
+            
+            <div class="connection-status" id="connectionStatus">
+                Bağlantı durumu kontrol ediliyor...
+            </div>
+            
+            <div class="data-source" id="dataSource">
+                Veri kaynağı: Kontrol ediliyor...
             </div>
             
             <div class="last-check" id="lastCheckTime">
@@ -326,6 +371,8 @@
             const orderButtonStatus = document.getElementById('orderButtonStatus');
             const availabilityStatus = document.getElementById('availabilityStatus');
             const lastCheckTime = document.getElementById('lastCheckTime');
+            const connectionStatus = document.getElementById('connectionStatus');
+            const dataSource = document.getElementById('dataSource');
             
             // Sipariş butonu durumu
             if (data.has_order_button === true) {
@@ -349,6 +396,31 @@
             } else {
                 availabilityStatus.textContent = '❓ Bilinmiyor';
                 availabilityStatus.className = 'status-value status-unknown';
+            }
+            
+            // Bağlantı durumu
+            if (data.connection_status) {
+                connectionStatus.textContent = data.connection_status;
+                if (data.connection_status.includes('başarıyla')) {
+                    connectionStatus.className = 'connection-status connected';
+                } else if (data.connection_status.includes('bağlanılamıyor')) {
+                    connectionStatus.className = 'connection-status error';
+                } else {
+                    connectionStatus.className = 'connection-status';
+                }
+            }
+            
+            // Veri kaynağı
+            if (data.source) {
+                if (data.source === 'tesla') {
+                    dataSource.textContent = '📡 Veri kaynağı: Tesla sitesi (gerçek veri)';
+                    dataSource.style.background = '#d4edda';
+                    dataSource.style.color = '#155724';
+                } else if (data.source === 'mock') {
+                    dataSource.textContent = '🎭 Veri kaynağı: Demo veri (Tesla sitesine bağlanılamıyor)';
+                    dataSource.style.background = '#fff3cd';
+                    dataSource.style.color = '#856404';
+                }
             }
             
             // Son kontrol zamanı
