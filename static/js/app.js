@@ -106,7 +106,12 @@ class TeslaMonitor {
         button.disabled = true;
 
         try {
-            const response = await fetch('/api/manual-check');
+            const response = await fetch('/api/manual-check', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
             const data = await response.json();
             
             if (data.success) {

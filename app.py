@@ -40,11 +40,27 @@ def get_page_content():
     """Fetch Tesla Model Y page content"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
         }
-        response = requests.get(TESLA_URL, headers=headers, timeout=10)
+        
+        print(f"Fetching Tesla page: {TESLA_URL}")
+        response = requests.get(TESLA_URL, headers=headers, timeout=30)
         response.raise_for_status()
+        
+        print(f"Page fetched successfully, content length: {len(response.text)}")
         return response.text
+        
+    except requests.exceptions.Timeout:
+        print("Timeout error while fetching Tesla page")
+        return None
+    except requests.exceptions.ConnectionError as e:
+        print(f"Connection error while fetching Tesla page: {e}")
+        return None
     except Exception as e:
         print(f"Error fetching page: {e}")
         return None
@@ -109,59 +125,72 @@ def save_snapshot(content, has_order_button, has_availability):
 
 def check_for_changes():
     """Main monitoring function"""
-    print(f"Checking Tesla page at {datetime.now()}")
-    
-    content = get_page_content()
-    if not content:
-        return
-    
-    has_order_button, has_availability = analyze_content(content)
-    content_hash = save_snapshot(content, has_order_button, has_availability)
-    
-    # Get previous snapshot for comparison
-    conn = sqlite3.connect('tesla_monitor.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT content_hash, has_order_button, has_availability 
-        FROM page_snapshots 
-        ORDER BY timestamp DESC 
-        LIMIT 2
-    ''')
-    results = cursor.fetchall()
-    conn.close()
-    
-    if len(results) >= 2:
-        prev_hash, prev_order, prev_availability = results[1]
+    try:
+        print(f"Checking Tesla page at {datetime.now()}")
         
-        # Check for changes
-        changes = []
+        content = get_page_content()
+        if not content:
+            print("No content received from Tesla page")
+            return
         
-        if content_hash != prev_hash:
-            changes.append("Sayfa içeriği değişti")
+        has_order_button, has_availability = analyze_content(content)
+        content_hash = save_snapshot(content, has_order_button, has_availability)
         
-        if has_order_button and not prev_order:
-            changes.append("Sipariş butonu eklendi!")
-            socketio.emit('order_available', {
-                'message': 'Tesla Model Y siparişi artık mevcut!',
-                'timestamp': datetime.now().isoformat()
-            })
+        # Get previous snapshot for comparison
+        conn = sqlite3.connect('tesla_monitor.db')
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT content_hash, has_order_button, has_availability 
+            FROM page_snapshots 
+            ORDER BY timestamp DESC 
+            LIMIT 2
+        ''')
+        results = cursor.fetchall()
+        conn.close()
         
-        if has_availability and not prev_availability:
-            changes.append("Stok durumu değişti!")
-            socketio.emit('stock_change', {
-                'message': 'Tesla Model Y stok durumu güncellendi!',
-                'timestamp': datetime.now().isoformat()
-            })
+        if len(results) >= 2:
+            prev_hash, prev_order, prev_availability = results[1]
+            
+            # Check for changes
+            changes = []
+            
+            if content_hash != prev_hash:
+                changes.append("Sayfa içeriği değişti")
+            
+            if has_order_button and not prev_order:
+                changes.append("Sipariş butonu eklendi!")
+                socketio.emit('order_available', {
+                    'message': 'Tesla Model Y siparişi artık mevcut!',
+                    'timestamp': datetime.now().isoformat()
+                })
+            
+            if has_availability and not prev_availability:
+                changes.append("Stok durumu değişti!")
+                socketio.emit('stock_change', {
+                    'message': 'Tesla Model Y stok durumu güncellendi!',
+                    'timestamp': datetime.now().isoformat()
+                })
+            
+            if changes:
+                change_message = " | ".join(changes)
+                socketio.emit('page_change', {
+                    'message': change_message,
+                    'timestamp': datetime.now().isoformat(),
+                    'has_order_button': has_order_button,
+                    'has_availability': has_availability
+                })
+                print(f"Changes detected: {change_message}")
         
-        if changes:
-            change_message = " | ".join(changes)
-            socketio.emit('page_change', {
-                'message': change_message,
-                'timestamp': datetime.now().isoformat(),
-                'has_order_button': has_order_button,
-                'has_availability': has_availability
-            })
-            print(f"Changes detected: {change_message}")
+        print(f"Check completed - Order: {has_order_button}, Availability: {has_availability}")
+        
+    except Exception as e:
+        print(f"Error in check_for_changes: {e}")
+        # Emit error to frontend
+        socketio.emit('status_update', {
+            'timestamp': datetime.now().isoformat(),
+            'status': 'error',
+            'message': f'Kontrol hatası: {str(e)}'
+        })
 
 # Initialize database
 init_db()
@@ -229,10 +258,11 @@ def get_history():
     
     return jsonify(history)
 
-@app.route('/api/manual-check')
+@app.route('/api/manual-check', methods=['POST'])
 def manual_check():
     """Trigger manual check of Tesla page"""
     try:
+        print("Manual check triggered")
         check_for_changes()
         return jsonify({
             'success': True,
@@ -240,6 +270,7 @@ def manual_check():
             'timestamp': datetime.now().isoformat()
         })
     except Exception as e:
+        print(f"Manual check error: {e}")
         return jsonify({
             'success': False,
             'message': f'Hata: {str(e)}',
