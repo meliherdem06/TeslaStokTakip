@@ -11,7 +11,7 @@ export PYTHON_VERSION=3.9.16
 
 # Clean any existing environment
 echo "Cleaning environment..."
-pip uninstall -y eventlet gevent flask-socketio python-socketio 2>/dev/null || true
+pip uninstall -y eventlet gevent flask-socketio python-socketio lxml 2>/dev/null || true
 
 # Install requirements
 echo "Installing requirements..."
@@ -20,7 +20,7 @@ pip install -r requirements.txt
 
 # Force remove any eventlet/gevent that might have been installed
 echo "Force removing eventlet/gevent..."
-pip uninstall -y eventlet gevent flask-socketio python-socketio 2>/dev/null || true
+pip uninstall -y eventlet gevent flask-socketio python-socketio lxml 2>/dev/null || true
 
 # Verify NO eventlet is installed
 echo "Verifying no eventlet is installed..."
