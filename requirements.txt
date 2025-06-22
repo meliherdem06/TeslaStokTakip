@@ -1,6 +1,6 @@
-Flask==3.0.0
+Flask==2.3.3
 requests==2.31.0
-BeautifulSoup4==4.12.3
-APScheduler==3.10.4
-urllib3==2.2.1
-gunicorn==22.0.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+schedule==1.2.0
+gunicorn==21.2.0

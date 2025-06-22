@@ -1,30 +1,29 @@
-import os
-import sqlite3
-import hashlib
-import requests
-import urllib3
-from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
+import requests
 from bs4 import BeautifulSoup
-from apscheduler.schedulers.background import BackgroundScheduler
-import warnings
-
-# Disable SSL warnings
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-warnings.filterwarnings('ignore', message='Unverified HTTPS request')
+import sqlite3
+import schedule
+import threading
+import time
+from datetime import datetime
+import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'tesla-stok-takip-secret-key'
 
-# Global variables
-last_check_time = None
-last_status = {"has_order_button": None, "has_availability": None}
-last_failure_time = None
-consecutive_failures = 0
-MAX_CONSECUTIVE_FAILURES = 3
-FAILURE_COOLDOWN_MINUTES = 15
+# Database setup
+def init_db():
+    conn = sqlite3.connect('tesla_status.db')
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS status_history
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  timestamp TEXT NOT NULL,
+                  has_order_button BOOLEAN,
+                  has_availability BOOLEAN,
+                  url TEXT)''')
+    conn.commit()
+    conn.close()
 
-# Tesla URLs to try
+# Tesla URLs to check
 TESLA_URLS = [
     'https://www.tesla.com/tr_TR/modely/design#overview',
     'https://www.tesla.com/tr_tr/model-y/design',
@@ -38,312 +37,115 @@ TESLA_URLS = [
     'https://www.tesla.com/tr_tr/modely/design#overview'
 ]
 
-# Database setup
-def init_db():
-    """Initialize database with tables"""
-    conn = sqlite3.connect('tesla_stok_takip.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS page_snapshots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            content_hash TEXT,
-            content_length INTEGER,
-            has_order_button BOOLEAN,
-            has_availability BOOLEAN,
-            raw_content TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
-    print("Database initialized")
-
-def get_page_content():
-    """Fetch Tesla Model Y page content with requests."""
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
-    }
-    
-    print(f"Trying Tesla URLs with requests...")
-    
-    # Try only the first URL to avoid complexity
-    url = TESLA_URLS[0]
-    
-    try:
-        print(f"Trying URL: {url}")
-        
-        # Simple request without session
-        response = requests.get(url, headers=headers, timeout=30, allow_redirects=True, verify=False)
-        response.raise_for_status()
-        
-        print(f"Page fetched successfully from {url}")
-        return response.text
-        
-    except Exception as e:
-        print(f"Failed to fetch {url}. Error: {e}")
-        return None
-
-def analyze_content(content):
-    """Analyze page content for order button and availability"""
-    soup = BeautifulSoup(content, 'html.parser')
-    
-    # Check for order button (common patterns)
-    order_indicators = [
-        'sipariş ver',
-        'order now',
-        'rezervasyon',
-        'reservation',
-        'satın al',
-        'buy now',
-        'order',
-        'sipariş',
-        'purchase'
-    ]
-    
-    # Check for availability indicators (positive)
-    availability_indicators = [
-        'stokta',
-        'available',
-        'mevcut',
-        'in stock',
-        'teslim',
-        'delivery',
-        'hazır',
-        'ready'
-    ]
-    
-    # Check for NO availability indicators (negative)
-    no_availability_indicators = [
-        'güncellemeleri al',
-        'get updates',
-        'stokta değil',
-        'not available',
-        'out of stock',
-        'bekleme listesi',
-        'waitlist',
-        'ön sipariş',
-        'pre-order',
-        'bilgi al',
-        'get info'
-    ]
-    
-    page_text = soup.get_text().lower()
-    
-    # Check for order button
-    has_order_button = any(indicator in page_text for indicator in order_indicators)
-    
-    # Check for availability - prioritize negative indicators
-    has_availability = False
-    has_no_availability = any(indicator in page_text for indicator in no_availability_indicators)
-    
-    if has_no_availability:
-        has_availability = False
-    else:
-        has_availability = any(indicator in page_text for indicator in availability_indicators)
-    
-    # Also check for specific button elements
-    buttons = soup.find_all(['button', 'a', 'div'])
-    for button in buttons:
-        button_text = button.get_text().lower()
-        
-        # Check for order buttons
-        if any(indicator in button_text for indicator in order_indicators):
-            has_order_button = True
-        
-        # Check for availability buttons
-        if any(indicator in button_text for indicator in availability_indicators):
-            if not has_no_availability:  # Only if no negative indicators found
-                has_availability = True
-        
-        # Check for NO availability buttons (these override positive indicators)
-        if any(indicator in button_text for indicator in no_availability_indicators):
-            has_availability = False
-            has_no_availability = True
-    
-    print(f"Content analysis - Order button: {has_order_button}, Availability: {has_availability}, No availability indicators: {has_no_availability}")
-    
-    return has_order_button, has_availability
-
-def save_snapshot(content, has_order_button, has_availability):
-    """Save page snapshot to database"""
-    content_hash = hashlib.md5(content.encode()).hexdigest()
-    content_length = len(content)
-    
-    conn = sqlite3.connect('tesla_stok_takip.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO page_snapshots (content_hash, content_length, has_order_button, has_availability, raw_content)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (content_hash, content_length, has_order_button, has_availability, content))
-    conn.commit()
+def get_current_status():
+    """Get the most recent status from database"""
+    conn = sqlite3.connect('tesla_status.db')
+    c = conn.cursor()
+    c.execute('SELECT has_order_button, has_availability, timestamp FROM status_history ORDER BY id DESC LIMIT 1')
+    result = c.fetchone()
     conn.close()
     
-    return content_hash
-
-def perform_check():
-    """Perform the actual check. Returns a status dict if changed, None if no change, and raises exception on error."""
-    global last_check_time, last_status, last_failure_time, consecutive_failures
-    
-    print(f"Checking Tesla page at {datetime.now()}")
-    
-    # Check if we're in cooldown period
-    if last_failure_time and datetime.now() - last_failure_time < timedelta(minutes=FAILURE_COOLDOWN_MINUTES):
-        print(f"Tesla sayfasına bağlanılamıyor. Son hata: {last_failure_time}")
-        raise ConnectionError("Tesla sayfasına bağlanılamıyor. Lütfen daha sonra tekrar deneyin.")
-    
-    try:
-        content = get_page_content()
-        
-        if not content:
-            raise ConnectionError("Could not fetch content from Tesla page")
-
-        has_order_button, has_availability = analyze_content(content)
-        
-        save_snapshot(content, has_order_button, has_availability)
-        
-        new_status = {
-            "has_order_button": has_order_button,
-            "has_availability": has_availability
+    if result:
+        return {
+            'has_order_button': result[0],
+            'has_availability': result[1],
+            'timestamp': result[2]
         }
-        
-        # Check if status changed
-        if new_status != last_status:
-            print(f"Status changed from {last_status} to {new_status}")
-            last_status = new_status
-            last_check_time = datetime.now()
-            consecutive_failures = 0
-            return new_status
-        else:
-            print(f"Status unchanged: {new_status}")
-            last_check_time = datetime.now()
-            consecutive_failures = 0
-            return None
-            
-    except Exception as e:
-        consecutive_failures += 1
-        last_failure_time = datetime.now()
-        print(f"Connection error in check_for_changes: {e}")
-        raise
-
-def get_last_known_status_from_db():
-    """Get the last known status from database"""
-    try:
-        conn = sqlite3.connect('tesla_stok_takip.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT has_order_button, has_availability, timestamp 
-            FROM page_snapshots 
-            ORDER BY timestamp DESC 
-            LIMIT 1
-        ''')
-        result = cursor.fetchone()
-        conn.close()
-        
-        if result:
-            return {
-                "has_order_button": bool(result[0]),
-                "has_availability": bool(result[1]),
-                "last_check": result[2]
-            }
-    except Exception as e:
-        print(f"Error getting last status from DB: {e}")
-    
     return None
 
-def check_for_changes():
-    """Background job to check for changes"""
-    try:
-        result = perform_check()
-        if result:
-            print(f"Change detected: {result}")
-    except Exception as e:
-        print(f"Error in background check: {e}")
+def save_status(has_order_button, has_availability, url):
+    """Save status to database"""
+    conn = sqlite3.connect('tesla_status.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO status_history (timestamp, has_order_button, has_availability, url) VALUES (?, ?, ?, ?)',
+              (datetime.now().isoformat(), has_order_button, has_availability, url))
+    conn.commit()
+    conn.close()
 
-# Initialize database
-init_db()
+def check_tesla_page():
+    """Check Tesla page for availability"""
+    print(f"Checking Tesla page at {datetime.now()}")
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    for url in TESLA_URLS:
+        try:
+            print(f"Trying URL: {url}")
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Check for order button
+            order_button = soup.find('button', string=lambda text: text and 'sipariş' in text.lower()) or \
+                          soup.find('button', string=lambda text: text and 'order' in text.lower()) or \
+                          soup.find('a', string=lambda text: text and 'sipariş' in text.lower()) or \
+                          soup.find('a', string=lambda text: text and 'order' in text.lower())
+            
+            # Check for availability indicators
+            availability_text = soup.find(string=lambda text: text and 'stok' in text.lower()) or \
+                               soup.find(string=lambda text: text and 'available' in text.lower()) or \
+                               soup.find(string=lambda text: text and 'müsait' in text.lower())
+            
+            has_order_button = order_button is not None
+            has_availability = availability_text is not None
+            
+            print(f"Content analysis - Order button: {has_order_button}, Availability: {has_availability}")
+            
+            # Save to database
+            save_status(has_order_button, has_availability, url)
+            return True
+            
+        except Exception as e:
+            print(f"Error fetching {url}: {e}")
+            continue
+    
+    print("All Tesla pages failed to load.")
+    return False
 
-# Start background scheduler
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=check_for_changes, trigger="interval", minutes=5)
-scheduler.start()
+def background_check():
+    """Background task to check Tesla page"""
+    while True:
+        try:
+            check_tesla_page()
+        except Exception as e:
+            print(f"Error in background check: {e}")
+        
+        time.sleep(300)  # Check every 5 minutes
 
+# Routes
 @app.route('/')
 def index():
     return render_template('index.html')
 
 @app.route('/api/status')
-def get_status():
-    """Get current status"""
-    global last_status, last_check_time
-    
-    # If we have no status, try to get from database
-    if last_status["has_order_button"] is None:
-        db_status = get_last_known_status_from_db()
-        if db_status:
-            last_status = {
-                "has_order_button": db_status["has_order_button"],
-                "has_availability": db_status["has_availability"]
-            }
-            last_check_time = datetime.fromisoformat(db_status["last_check"].replace('Z', '+00:00'))
-    
-    return jsonify({
-        "status": last_status,
-        "last_check": last_check_time.isoformat() if last_check_time else None,
-        "consecutive_failures": consecutive_failures,
-        "last_failure": last_failure_time.isoformat() if last_failure_time else None
-    })
-
-@app.route('/api/history')
-def get_history():
-    """Get history of checks"""
-    try:
-        conn = sqlite3.connect('tesla_stok_takip.db')
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT timestamp, has_order_button, has_availability, content_length
-            FROM page_snapshots 
-            ORDER BY timestamp DESC 
-            LIMIT 50
-        ''')
-        results = cursor.fetchall()
-        conn.close()
-        
-        history = []
-        for row in results:
-            history.append({
-                "timestamp": row[0],
-                "has_order_button": bool(row[1]),
-                "has_availability": bool(row[2]),
-                "content_length": row[3]
-            })
-        
-        return jsonify(history)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+def api_status():
+    status = get_current_status()
+    if status:
+        return jsonify(status)
+    return jsonify({'error': 'No status available'})
 
 @app.route('/manual_check', methods=['POST'])
 def manual_check():
     """Manual check endpoint"""
     print("Manual check requested")
-    try:
-        result = perform_check()
-        return jsonify({
-            "success": True,
-            "status": result if result else last_status,
-            "message": "Check completed successfully"
-        })
-    except Exception as e:
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+    success = check_tesla_page()
+    status = get_current_status()
+    return jsonify({'success': success, 'status': status})
 
+# Initialize database and start background thread
 if __name__ == '__main__':
+    init_db()
+    print("Database initialized")
+    
+    # Start background thread
+    background_thread = threading.Thread(target=background_check, daemon=True)
+    background_thread.start()
+    
     port = int(os.environ.get('PORT', 5001))
     print(f"TeslaStokTakip starting on port {port}")
     print(f"Tesla URLs: {TESLA_URLS}")
+    
     app.run(host='0.0.0.0', port=port, debug=False) 
