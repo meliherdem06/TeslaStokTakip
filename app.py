@@ -5,7 +5,6 @@ import requests
 import urllib3
 from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
-from flask_socketio import SocketIO
 from bs4 import BeautifulSoup
 from apscheduler.schedulers.background import BackgroundScheduler
 import warnings
@@ -16,9 +15,6 @@ warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'tesla-stok-takip-secret-key'
-
-# SocketIO setup - NO eventlet, use default
-socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
 # Global variables
 last_check_time = None
@@ -249,37 +245,32 @@ def get_last_known_status_from_db():
         
         if result:
             return {
-                "has_order_button": result[0],
-                "has_availability": result[1],
+                "has_order_button": bool(result[0]),
+                "has_availability": bool(result[1]),
                 "last_check": result[2]
             }
-        return None
     except Exception as e:
         print(f"Error getting last status from DB: {e}")
-        return None
+    
+    return None
 
 def check_for_changes():
     """Background job to check for changes"""
     try:
         result = perform_check()
         if result:
-            # Emit to all connected clients
-            socketio.emit('status_update', result)
-            print(f"Status update sent to clients: {result}")
+            print(f"Change detected: {result}")
     except Exception as e:
         print(f"Error in background check: {e}")
-        # Emit error to clients
-        socketio.emit('error', {"message": str(e)})
 
 # Initialize database
 init_db()
 
-# Setup scheduler
+# Start background scheduler
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=check_for_changes, trigger="interval", minutes=5)
 scheduler.start()
 
-# Routes
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -297,10 +288,13 @@ def get_status():
                 "has_order_button": db_status["has_order_button"],
                 "has_availability": db_status["has_availability"]
             }
+            last_check_time = datetime.fromisoformat(db_status["last_check"].replace('Z', '+00:00'))
     
     return jsonify({
         "status": last_status,
-        "last_check": last_check_time.isoformat() if last_check_time else None
+        "last_check": last_check_time.isoformat() if last_check_time else None,
+        "consecutive_failures": consecutive_failures,
+        "last_failure": last_failure_time.isoformat() if last_failure_time else None
     })
 
 @app.route('/api/history')
@@ -322,8 +316,8 @@ def get_history():
         for row in results:
             history.append({
                 "timestamp": row[0],
-                "has_order_button": row[1],
-                "has_availability": row[2],
+                "has_order_button": bool(row[1]),
+                "has_availability": bool(row[2]),
                 "content_length": row[3]
             })
         
@@ -337,32 +331,19 @@ def manual_check():
     print("Manual check requested")
     try:
         result = perform_check()
-        if result:
-            socketio.emit('status_update', result)
-            return jsonify({"success": True, "status": result})
-        else:
-            return jsonify({"success": True, "message": "No changes detected"})
+        return jsonify({
+            "success": True,
+            "status": result if result else last_status,
+            "message": "Check completed successfully"
+        })
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-# SocketIO events
-@socketio.on('connect')
-def handle_connect():
-    """Handle client connection"""
-    print(f"Client connected: {request.sid}")
-    # Send current status immediately
-    if last_status["has_order_button"] is not None:
-        socketio.emit('status_update', last_status, room=request.sid)
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    """Handle client disconnection"""
-    print(f"Client disconnected: {request.sid}")
-
-# Get port from environment or use default
-port = int(os.environ.get('PORT', 5001))
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5001))
     print(f"TeslaStokTakip starting on port {port}")
     print(f"Tesla URLs: {TESLA_URLS}")
-    socketio.run(app, host='0.0.0.0', port=port, debug=False) 
+    app.run(host='0.0.0.0', port=port, debug=False) 

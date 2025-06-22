@@ -1,65 +1,25 @@
 // Tesla Stok Takip - Frontend Application
 class TeslaStokTakip {
     constructor() {
-        this.socket = null;
         this.soundEnabled = true;
         this.notificationSound = document.getElementById('notificationSound');
         this.chart = null;
+        this.pollingInterval = null;
         this.init();
     }
 
     init() {
-        this.connectWebSocket();
         this.setupEventListeners();
+        this.loadInitialData();
+        this.startPolling();
         this.loadHistoryData();
     }
 
-    connectWebSocket() {
-        this.socket = io({
-            transports: ['websocket'],
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            reconnectionAttempts: Infinity
-        });
-
-        this.socket.on('connect', () => {
-            console.log('WebSocket connected');
-            this.updateConnectionStatus(true);
-            this.addNotification('Sisteme bağlandı, ilk durum kontrol ediliyor...', 'info');
-        });
-
-        this.socket.on('disconnect', () => {
-            console.log('WebSocket disconnected');
-            this.updateConnectionStatus(false);
-            this.addNotification('Sistemle bağlantı kesildi', 'warning');
-        });
-
-        this.socket.on('status_update', (data) => {
-            console.log('Status update received:', data);
-            this.addNotification(data.message, 'info');
-            this.updateStatus(data);
-            
-            if (data.has_availability) {
-                this.addNotification('🚗 TESLA MODEL Y STOKTA! 🚗', 'success');
-                this.playNotificationSound();
-            } else if (data.has_order_button) {
-                 this.addNotification('🔔 Tesla Model Y için ön sipariş mevcut olabilir!', 'warning');
-                 this.playNotificationSound();
-            }
-        });
-        
-        this.socket.on('check_complete', (data) => {
-            console.log('Check complete received:', data);
-            this.addNotification(data.message, 'info');
-            this.updateStatus(data);
-        });
-
-        this.socket.on('connect_error', (error) => {
-            console.error('Connection Error:', error);
-            this.updateConnectionStatus(false);
-            this.addNotification('Bağlantı hatası: ' + error.message, 'error');
-        });
+    startPolling() {
+        // Poll every 30 seconds for status updates
+        this.pollingInterval = setInterval(() => {
+            this.loadInitialData();
+        }, 30000);
     }
 
     setupEventListeners() {
@@ -98,8 +58,27 @@ class TeslaStokTakip {
     }
 
     async loadInitialData() {
-        // This is now only for the history chart or as a fallback.
-        // The primary status update comes from the 'status_update' websocket event.
+        try {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            
+            this.updateConnectionStatus(true);
+            this.updateStatus(data.status, data.last_check);
+            
+            // Check for changes and show notifications
+            if (data.status.has_availability) {
+                this.addNotification('🚗 TESLA MODEL Y STOKTA! 🚗', 'success');
+                this.playNotificationSound();
+            } else if (data.status.has_order_button) {
+                this.addNotification('🔔 Tesla Model Y için ön sipariş mevcut olabilir!', 'warning');
+                this.playNotificationSound();
+            }
+            
+        } catch (error) {
+            console.error('Error loading status:', error);
+            this.updateConnectionStatus(false);
+            this.addNotification('Durum bilgisi alınamadı', 'error');
+        }
     }
 
     async manualCheck() {
@@ -121,9 +100,18 @@ class TeslaStokTakip {
             
             if (data.success) {
                 this.addNotification(data.message, 'success');
-                // The backend will push the update via WebSocket, so no need to call updateStatus here.
+                this.updateStatus(data.status);
+                
+                // Check for changes and show notifications
+                if (data.status.has_availability) {
+                    this.addNotification('🚗 TESLA MODEL Y STOKTA! 🚗', 'success');
+                    this.playNotificationSound();
+                } else if (data.status.has_order_button) {
+                    this.addNotification('🔔 Tesla Model Y için ön sipariş mevcut olabilir!', 'warning');
+                    this.playNotificationSound();
+                }
             } else {
-                this.addNotification(`Manuel kontrol hatası: ${data.message}`, 'error');
+                this.addNotification(`Manuel kontrol hatası: ${data.error}`, 'error');
             }
         } catch (error) {
             console.error('Manual check error:', error);
@@ -134,7 +122,7 @@ class TeslaStokTakip {
         }
     }
 
-    updateStatus(data) {
+    updateStatus(data, lastCheckTime = null) {
         const orderStatus = document.getElementById('orderStatus');
         const orderStatusIcon = document.getElementById('orderStatusIcon');
         
@@ -166,9 +154,8 @@ class TeslaStokTakip {
 
         // Update last check time
         const lastCheck = document.getElementById('lastCheck');
-        if (data.last_check_time) {
-            // Check if the timestamp is a full ISO string or just a date
-            const date = new Date(data.last_check_time);
+        if (lastCheckTime) {
+            const date = new Date(lastCheckTime);
             lastCheck.textContent = date.toLocaleString('tr-TR');
         } else {
             lastCheck.textContent = 'Henüz kontrol edilmedi';
@@ -198,8 +185,9 @@ class TeslaStokTakip {
     getNotificationIcon(type) {
         switch (type) {
             case 'success': return 'fas fa-check-circle';
+            case 'error': return 'fas fa-exclamation-circle';
             case 'warning': return 'fas fa-exclamation-triangle';
-            case 'error': return 'fas fa-times-circle';
+            case 'info': return 'fas fa-info-circle';
             default: return 'fas fa-info-circle';
         }
     }
@@ -229,10 +217,7 @@ class TeslaStokTakip {
 
     playNotificationSound() {
         if (this.soundEnabled && this.notificationSound) {
-            this.notificationSound.currentTime = 0;
-            this.notificationSound.play().catch(error => {
-                console.log('Audio play failed:', error);
-            });
+            this.notificationSound.play().catch(e => console.log('Audio play failed:', e));
         }
     }
 
@@ -247,77 +232,71 @@ class TeslaStokTakip {
                 datasets: [{
                     label: 'Sipariş Durumu',
                     data: [],
-                    borderColor: '#3e6ae1',
-                    backgroundColor: 'rgba(62, 106, 225, 0.1)',
-                    tension: 0.4,
-                    fill: true
+                    borderColor: 'rgb(255, 99, 132)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    tension: 0.1
                 }, {
                     label: 'Stok Durumu',
                     data: [],
-                    borderColor: '#00ff88',
-                    backgroundColor: 'rgba(0, 255, 136, 0.1)',
-                    tension: 0.4,
-                    fill: true
+                    borderColor: 'rgb(54, 162, 235)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.2)',
+                    tension: 0.1
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        labels: {
-                            color: '#ffffff'
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 1,
+                        ticks: {
+                            stepSize: 1,
+                            callback: function(value) {
+                                return value === 1 ? 'Var' : 'Yok';
+                            }
                         }
                     }
                 },
-                scales: {
-                    x: {
-                        ticks: {
-                            color: '#b0b0b0'
-                        },
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        }
-                    },
-                    y: {
-                        ticks: {
-                            color: '#b0b0b0',
-                            stepSize: 1
-                        },
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        }
+                plugins: {
+                    legend: {
+                        position: 'top',
                     }
                 }
             }
         });
-
-        this.loadHistoryData();
     }
 
     async loadHistoryData() {
         try {
             const response = await fetch('/api/history');
             const data = await response.json();
-            this.updateChart(data);
+            
+            if (data.length > 0) {
+                this.updateChart(data);
+            }
         } catch (error) {
             console.error('Error loading history:', error);
         }
     }
 
     updateChart(data) {
-        if (!this.chart || data.length === 0) return;
+        if (!this.chart) {
+            this.setupChart();
+        }
 
-        const labels = [];
-        const orderData = [];
-        const stockData = [];
-
-        data.reverse().forEach(item => {
+        const labels = data.map(item => {
             const date = new Date(item.timestamp);
-            labels.push(date.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }));
-            orderData.push(item.has_order_button ? 1 : 0);
-            stockData.push(item.has_availability ? 1 : 0);
-        });
+            return date.toLocaleString('tr-TR', { 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+        }).reverse();
+
+        const orderData = data.map(item => item.has_order_button ? 1 : 0).reverse();
+        const stockData = data.map(item => item.has_availability ? 1 : 0).reverse();
 
         this.chart.data.labels = labels;
         this.chart.data.datasets[0].data = orderData;
