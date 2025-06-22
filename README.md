@@ -59,7 +59,7 @@ Tesla Model Y araçlarının Türkiye'deki stok durumunu gerçek zamanlı olarak
 ## 🌐 Canlı Demo
 
 Uygulama şu adreste canlı olarak çalışmaktadır:
-[https://tesla-stok-takip.onrender.com](https://tesla-stok-takip.onrender.com)
+[https://teslastoktakip.onrender.com](https://teslastoktakip.onrender.com)
 
 ## 📊 Nasıl Çalışır?
 
