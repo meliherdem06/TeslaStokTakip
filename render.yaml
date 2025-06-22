@@ -4,10 +4,12 @@ services:
     env: python
     plan: free
     buildCommand: chmod +x build.sh && ./build.sh
-    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class sync --timeout 120 app:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --worker-class sync --timeout 120 --preload app:app
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.16
       - key: RENDER
         value: true
+      - key: GUNICORN_CMD_ARGS
+        value: "--worker-class=sync --workers=1 --timeout=120"
     autoDeploy: true 

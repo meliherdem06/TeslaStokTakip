@@ -1,6 +1,13 @@
 #!/bin/bash
-echo "Starting build process..."
+set -e
+
+echo "=== FORCE CLEAN BUILD STARTING ==="
 echo "Python version: $(python --version)"
+
+# Kill any existing processes
+echo "Killing any existing processes..."
+pkill -f "python app.py" || true
+pkill -f "gunicorn" || true
 
 # Force clean environment
 echo "Cleaning up cached configurations..."
@@ -9,6 +16,7 @@ rm -rf .venv
 rm -rf venv
 rm -rf __pycache__
 rm -rf *.pyc
+rm -rf .pytest_cache
 
 # Create fresh virtual environment
 echo "Creating fresh virtual environment..."
@@ -19,9 +27,19 @@ echo "Installing dependencies..."
 pip install --upgrade pip
 pip install -r requirements.txt
 
-# Verify no eventlet is installed
+# Verify NO eventlet is installed
 echo "Verifying dependencies..."
-pip list | grep -i eventlet || echo "No eventlet found - good!"
-pip list | grep -i selenium || echo "No selenium found - good!"
+if pip list | grep -i eventlet; then
+    echo "ERROR: eventlet found! Removing..."
+    pip uninstall eventlet -y
+fi
 
-echo "Build completed successfully!" 
+if pip list | grep -i selenium; then
+    echo "ERROR: selenium found! Removing..."
+    pip uninstall selenium -y
+fi
+
+echo "Final package list:"
+pip list
+
+echo "=== BUILD COMPLETED SUCCESSFULLY ===" 
