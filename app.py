@@ -68,39 +68,30 @@ def get_page_content():
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate',
         'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
     }
     
     print(f"Trying Tesla URLs with requests...")
     
-    # Try only the first few URLs to avoid too many requests
-    urls_to_try = TESLA_URLS[:3]
+    # Try only the first URL to avoid complexity
+    url = TESLA_URLS[0]
     
-    for url in urls_to_try:
-        try:
-            print(f"Trying URL: {url}")
-            
-            # Create a new session for each request
-            session = requests.Session()
-            session.headers.update(headers)
-            
-            # Simple timeout without complex SSL handling
-            response = session.get(url, timeout=30, allow_redirects=True)
-            response.raise_for_status()
-            
-            print(f"Page fetched successfully from {url}")
-            return response.text
-            
-        except Exception as e:
-            print(f"Failed to fetch {url}. Error: {e}")
-            continue
-    
-    print("All Tesla pages failed to load.")
-    return None
+    try:
+        print(f"Trying URL: {url}")
+        
+        # Simple request without session
+        response = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+        response.raise_for_status()
+        
+        print(f"Page fetched successfully from {url}")
+        return response.text
+        
+    except Exception as e:
+        print(f"Failed to fetch {url}. Error: {e}")
+        return None
 
 def analyze_content(content):
     """Analyze page content for order button and availability"""
