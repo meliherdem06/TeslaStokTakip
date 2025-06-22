@@ -128,6 +128,14 @@ class TeslaStokTakip {
         document.getElementById('toggleTestMode').addEventListener('click', () => {
             this.toggleTestMode();
         });
+
+        // Test scenario buttons
+        document.querySelectorAll('[data-scenario]').forEach(button => {
+            button.addEventListener('click', (e) => {
+                const scenario = e.target.closest('button').dataset.scenario;
+                this.setTestScenario(scenario);
+            });
+        });
     }
 
     updateConnectionStatus(connected) {
@@ -227,10 +235,16 @@ class TeslaStokTakip {
                     button.innerHTML = '<i class="fas fa-flask"></i> Test Modu Açık';
                     button.classList.add('btn-success');
                     button.classList.remove('btn-warning');
+                    
+                    // Show test scenarios
+                    document.getElementById('testScenarios').style.display = 'block';
                 } else {
                     button.innerHTML = '<i class="fas fa-flask"></i> Test Modu';
                     button.classList.remove('btn-success');
                     button.classList.add('btn-warning');
+                    
+                    // Hide test scenarios
+                    document.getElementById('testScenarios').style.display = 'none';
                 }
             } else {
                 this.addNotification(`Test modu hatası: ${data.message}`, 'error');
@@ -238,6 +252,35 @@ class TeslaStokTakip {
         } catch (error) {
             console.error('Test mode toggle error:', error);
             this.addNotification('Test modu değiştirilirken hata oluştu', 'error');
+        }
+    }
+
+    async setTestScenario(scenario) {
+        try {
+            const response = await fetch('/api/test-scenario', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    scenario: scenario
+                })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                this.addNotification(data.message, 'success');
+                
+                // Trigger manual check to see the new scenario
+                setTimeout(() => {
+                    this.manualCheck();
+                }, 1000);
+            } else {
+                this.addNotification(`Test senaryosu hatası: ${data.message}`, 'error');
+            }
+        } catch (error) {
+            console.error('Test scenario error:', error);
+            this.addNotification('Test senaryosu ayarlanırken hata oluştu', 'error');
         }
     }
 

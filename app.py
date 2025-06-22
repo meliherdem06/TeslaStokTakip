@@ -57,21 +57,43 @@ def init_db():
 
 def get_test_content():
     """Generate test content when Tesla website is unreachable"""
-    # Simulate different scenarios
+    import random
+    import time
+    
+    # Get current timestamp to make scenarios more predictable
+    current_time = int(time.time())
+    
+    # Simulate different scenarios - mostly no stock, occasionally stock available
     scenarios = [
         {
             'content': '''
             <html>
             <body>
                 <h1>Tesla Model Y</h1>
-                <button>Sipariş Ver</button>
-                <p>Stokta mevcut</p>
-                <div>Hemen sipariş verin</div>
+                <p>Şu anda stokta değil</p>
+                <div>Bilgi alın</div>
+                <span>Stok durumu: Mevcut değil</span>
+            </body>
+            </html>
+            ''',
+            'has_order': False,
+            'has_stock': False,
+            'description': 'Stok yok - Sipariş yok'
+        },
+        {
+            'content': '''
+            <html>
+            <body>
+                <h1>Tesla Model Y</h1>
+                <p>Ön sipariş</p>
+                <div>Rezervasyon yapın</div>
+                <span>Stok durumu: Ön sipariş</span>
             </body>
             </html>
             ''',
             'has_order': True,
-            'has_stock': True
+            'has_stock': False,
+            'description': 'Ön sipariş mevcut - Stok yok'
         },
         {
             'content': '''
@@ -80,29 +102,40 @@ def get_test_content():
                 <h1>Tesla Model Y</h1>
                 <p>Şu anda stokta değil</p>
                 <div>Bilgi alın</div>
+                <span>Stok durumu: Mevcut değil</span>
             </body>
             </html>
             ''',
             'has_order': False,
-            'has_stock': False
-        },
-        {
+            'has_stock': False,
+            'description': 'Stok yok - Sipariş yok'
+        }
+    ]
+    
+    # Add stock available scenario only occasionally (10% chance)
+    if current_time % 10 == 0:  # Every 10 seconds, 10% chance
+        scenarios.append({
             'content': '''
             <html>
             <body>
                 <h1>Tesla Model Y</h1>
-                <button>Rezervasyon Yap</button>
-                <p>Ön sipariş</p>
+                <button>Sipariş Ver</button>
+                <p>Stokta mevcut</p>
+                <div>Hemen sipariş verin</div>
+                <span>Stok durumu: Mevcut</span>
             </body>
             </html>
             ''',
             'has_order': True,
-            'has_stock': False
-        }
-    ]
+            'has_stock': True,
+            'description': 'STOK MEVCUT! - Sipariş mevcut'
+        })
     
-    # Randomly select a scenario
-    scenario = random.choice(scenarios)
+    # Select scenario based on time to make it more predictable
+    scenario_index = current_time % len(scenarios)
+    scenario = scenarios[scenario_index]
+    
+    print(f"Test mode: {scenario['description']}")
     return scenario['content'], scenario['has_order'], scenario['has_stock']
 
 def get_page_content():
@@ -471,6 +504,41 @@ def get_test_mode_status():
         'test_mode': TEST_MODE,
         'message': 'Test modu etkin' if TEST_MODE else 'Test modu devre dışı'
     })
+
+@app.route('/api/test-scenario', methods=['POST'])
+def set_test_scenario():
+    """Set specific test scenario for testing"""
+    global TEST_MODE
+    try:
+        data = request.get_json()
+        if data and 'scenario' in data:
+            scenario = data['scenario']
+            
+            # Force test mode to be enabled
+            TEST_MODE = True
+            
+            # Store the requested scenario (you can implement this if needed)
+            print(f"Test scenario requested: {scenario}")
+            
+            return jsonify({
+                'success': True,
+                'message': f'Test senaryosu ayarlandı: {scenario}',
+                'test_mode': TEST_MODE,
+                'scenario': scenario,
+                'timestamp': datetime.now().isoformat()
+            })
+        else:
+            return jsonify({
+                'success': False,
+                'message': 'Geçersiz senaryo',
+                'timestamp': datetime.now().isoformat()
+            }), 400
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'message': f'Hata: {str(e)}',
+            'timestamp': datetime.now().isoformat()
+        }), 500
 
 @app.route('/api/manual-check', methods=['POST'])
 def manual_check():
