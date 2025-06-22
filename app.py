@@ -525,7 +525,30 @@ def manual_check():
     try:
         print("Manual check triggered")
         
-        # Try to get page content
+        # Check if we're in test mode
+        if TEST_MODE:
+            print("Manual check in test mode")
+            result = perform_check()
+            
+            if result is None:
+                return jsonify({
+                    'success': False,
+                    'message': 'Test modunda sayfa içeriği işlenirken hata oluştu',
+                    'timestamp': datetime.now().isoformat(),
+                    'error_type': 'processing_error'
+                }), 500
+            
+            return jsonify({
+                'success': True,
+                'message': 'Test modunda manuel kontrol tamamlandı',
+                'timestamp': datetime.now().isoformat(),
+                'has_order_button': result['has_order_button'],
+                'has_availability': result['has_availability'],
+                'changes': result['changes'],
+                'test_mode': True
+            })
+        
+        # Not in test mode - try to get real Tesla page content
         content = get_page_content()
         
         if not content:
@@ -579,7 +602,8 @@ def manual_check():
             'timestamp': datetime.now().isoformat(),
             'has_order_button': result['has_order_button'],
             'has_availability': result['has_availability'],
-            'changes': result['changes']
+            'changes': result['changes'],
+            'test_mode': False
         })
         
     except Exception as e:
