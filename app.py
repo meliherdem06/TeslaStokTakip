@@ -3,14 +3,13 @@ import sqlite3
 import hashlib
 import requests
 import urllib3
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask import Flask, render_template, jsonify, request
 from flask_socketio import SocketIO, emit
 from bs4 import BeautifulSoup
 from apscheduler.schedulers.background import BackgroundScheduler
 import warnings
 import random
-import cloudscraper
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -25,6 +24,10 @@ socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interva
 # Global variables
 last_check_time = None
 last_status = {"has_order_button": None, "has_availability": None}
+last_failure_time = None
+consecutive_failures = 0
+MAX_CONSECUTIVE_FAILURES = 3
+FAILURE_COOLDOWN_MINUTES = 15
 
 # Tesla URLs to try
 TESLA_URLS = [
@@ -61,18 +64,32 @@ def init_db():
     print("Database initialized")
 
 def get_page_content():
-    """Fetch Tesla Model Y page content with cloudscraper to bypass bot detection."""
+    """Fetch Tesla Model Y page content with requests."""
     
-    scraper = cloudscraper.create_scraper()  # Use cloudscraper
-
-    print(f"Trying Tesla URLs with cloudscraper...")
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+    }
+    
+    print(f"Trying Tesla URLs with requests...")
     timeouts = [15, 25, 35]
     
     for url in TESLA_URLS:
         for timeout in timeouts:
             try:
                 print(f"Trying URL: {url} with timeout: {timeout}s")
-                response = scraper.get(url, timeout=timeout, verify=False, allow_redirects=True)
+                session = requests.Session()
+                session.headers.update(headers)
+                
+                # Fix SSL verification issues
+                session.verify = False
+                session.trust_env = False
+                
+                response = session.get(url, timeout=timeout, allow_redirects=True)
                 response.raise_for_status()
                 print(f"Page fetched successfully from {url}")
                 return response.text
@@ -182,33 +199,55 @@ def save_snapshot(content, has_order_button, has_availability):
 
 def perform_check():
     """Perform the actual check. Returns a status dict if changed, None if no change, and raises exception on error."""
-    global last_check_time, last_status
+    global last_check_time, last_status, last_failure_time, consecutive_failures
     
     print(f"Checking Tesla page at {datetime.now()}")
     
-    content = get_page_content()
+    # Check if we're in cooldown period
+    if last_failure_time and datetime.now() - last_failure_time < timedelta(minutes=FAILURE_COOLDOWN_MINUTES):
+        print(f"Tesla sayfasına bağlanılamıyor. Son hata: {last_failure_time}")
+        raise ConnectionError("Tesla sayfasına bağlanılamıyor. Lütfen daha sonra tekrar deneyin.")
     
-    if not content:
-        raise ConnectionError("Could not fetch content from Tesla page")
+    try:
+        content = get_page_content()
+        
+        if not content:
+            raise ConnectionError("Could not fetch content from Tesla page")
 
-    has_order_button, has_availability = analyze_content(content)
-    
-    save_snapshot(content, has_order_button, has_availability)
-    
-    new_status = {
-        'has_order_button': has_order_button,
-        'has_availability': has_availability
-    }
-    
-    last_check_time = datetime.now()
-    
-    if last_status['has_order_button'] != new_status['has_order_button'] or last_status['has_availability'] != new_status['has_availability']:
-        print(f"Status changed from {last_status} to {new_status}")
-        last_status = new_status
-        return last_status 
-    else:
-        print(f"Status unchanged: {last_status}")
-        return None
+        has_order_button, has_availability = analyze_content(content)
+        
+        save_snapshot(content, has_order_button, has_availability)
+        
+        new_status = {
+            'has_order_button': has_order_button,
+            'has_availability': has_availability
+        }
+        
+        last_check_time = datetime.now()
+        consecutive_failures = 0  # Reset failure counter on success
+        
+        if last_status['has_order_button'] != new_status['has_order_button'] or last_status['has_availability'] != new_status['has_availability']:
+            print(f"Status changed from {last_status} to {new_status}")
+            last_status = new_status
+            return last_status 
+        else:
+            print(f"Status unchanged: {last_status}")
+            return None
+            
+    except ConnectionError as e:
+        print(f"Connection error in perform_check: {e}")
+        last_failure_time = datetime.now()
+        consecutive_failures += 1
+        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+            print(f"Tesla sayfasına bağlanılamıyor. Çok sayıda ardışık bağlantı hatası. Lütfen daha sonra tekrar deneyin.")
+        raise e
+    except Exception as e:
+        print(f"Error in perform_check: {e}")
+        last_failure_time = datetime.now()
+        consecutive_failures += 1
+        if consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+            print(f"Tesla sayfasına bağlanılamıyor. Çok sayıda ardışık bağlantı hatası. Lütfen daha sonra tekrar deneyin.")
+        raise e
 
 def get_last_known_status_from_db():
     """Fetches the most recent successful snapshot from the database."""
