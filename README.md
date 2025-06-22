@@ -1,129 +1,111 @@
-# Teslat - Tesla Model Y Stock Monitor
+# Tesla Stok Takip
 
-Bu proje, Tesla Model Y'nin Türkiye web sitesindeki stok ve sipariş durumunu sürekli olarak takip eden bir web uygulamasıdır.
-
-## 🌐 Canlı Demo
-
-**Web Uygulaması:** [Teslat Monitor](https://teslat.onrender.com)
+Tesla Model Y araçlarının Türkiye'deki stok durumunu gerçek zamanlı olarak takip eden web uygulaması.
 
 ## 🚗 Özellikler
 
-- **Sürekli İzleme**: Tesla Model Y sayfasını her 5 dakikada bir kontrol eder
-- **Gerçek Zamanlı Bildirimler**: WebSocket kullanarak anlık güncellemeler
-- **Sesli Uyarılar**: Değişiklik tespit edildiğinde sesli bildirim
-- **Manuel Kontrol**: İsteğe bağlı manuel sayfa kontrolü
-- **Geçmiş Kayıtları**: Tüm kontrol geçmişini görüntüleme
+- **Gerçek Zamanlı Takip**: Tesla Türkiye sayfasını 5 dakikada bir kontrol eder
+- **Anlık Bildirimler**: Stok durumu değiştiğinde sesli ve görsel bildirimler
+- **Manuel Kontrol**: İsteğe bağlı manuel kontrol butonu
+- **Geçmiş Takibi**: Stok durumu geçmişini görüntüleme
+- **WebSocket Bağlantısı**: Gerçek zamanlı güncellemeler
+- **Responsive Tasarım**: Mobil ve masaüstü uyumlu
 
-## 📋 Gereksinimler
+## 🛠️ Teknolojiler
 
+- **Backend**: Python Flask, Flask-SocketIO
+- **Frontend**: HTML5, CSS3, JavaScript, Chart.js
+- **Veritabanı**: SQLite
+- **Web Scraping**: BeautifulSoup, Requests
+- **Deployment**: Render
+
+## 📦 Kurulum
+
+### Gereksinimler
 - Python 3.9+
-- pip (Python paket yöneticisi)
-- Modern web tarayıcısı
+- pip
 
-## 🛠️ Kurulum
+### Adımlar
 
-### Yerel Kurulum
-
-1. **Projeyi klonlayın veya indirin**
+1. **Projeyi klonlayın:**
    ```bash
-   git clone https://github.com/meliherdem06/Teslat.git
-   cd Teslat
+   git clone https://github.com/kullaniciadi/TeslaStokTakip.git
+   cd TeslaStokTakip
    ```
 
-2. **Sanal ortam oluşturun ve aktifleştirin**
+2. **Sanal ortam oluşturun:**
    ```bash
    python -m venv venv
-   source venv/bin/activate  # macOS/Linux
+   source venv/bin/activate  # Linux/Mac
    # veya
    venv\Scripts\activate  # Windows
    ```
 
-3. **Gereksinimleri yükleyin**
+3. **Bağımlılıkları yükleyin:**
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Uygulamayı çalıştırın**
+4. **Uygulamayı çalıştırın:**
    ```bash
    python app.py
    ```
 
-5. **Web tarayıcınızda açın**
+5. **Tarayıcıda açın:**
    ```
    http://localhost:5001
    ```
 
-### Render'da Deployment (Önerilen)
+## 🌐 Canlı Demo
 
-Web sitesinden çalışması için Render'da deploy edin:
+Uygulama şu adreste canlı olarak çalışmaktadır:
+[https://tesla-stok-takip.onrender.com](https://tesla-stok-takip.onrender.com)
 
-1. [Render.com](https://render.com)'da hesap oluşturun
-2. "New Web Service" seçin
-3. GitHub repository'nizi bağlayın
-4. Aşağıdaki ayarları yapın:
-   - **Name**: `teslat`
-   - **Environment**: Python
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `gunicorn --worker-class eventlet -w 1 app:app`
-   - **Plan**: Free
+## 📊 Nasıl Çalışır?
 
-5. "Create Web Service" butonuna tıklayın
-
-Deployment tamamlandıktan sonra, Render size bir URL verecek (örn: `https://teslat.onrender.com`). Bu URL'den uygulamaya erişebilirsiniz.
-
-## 🎯 Nasıl Çalışır
-
-1. **Otomatik İzleme**: Uygulama Tesla Model Y sayfasını her 5 dakikada bir kontrol eder
-2. **İçerik Analizi**: Sayfa içeriğinde sipariş butonu ve stok durumu arar
+1. **Otomatik Kontrol**: Uygulama her 5 dakikada bir Tesla Türkiye sayfasını kontrol eder
+2. **Stok Analizi**: Sayfa içeriğinde sipariş butonu ve stok durumu arar
 3. **Değişiklik Tespiti**: Önceki kontrolle karşılaştırarak değişiklikleri tespit eder
-4. **Gerçek Zamanlı Bildirim**: WebSocket ile anlık bildirimler gönderir
-5. **Sesli Uyarı**: Değişiklik olduğunda sesli bildirim verir
+4. **Bildirim Gönderme**: Değişiklik varsa WebSocket ile frontend'e bildirim gönderir
+5. **Sesli Uyarı**: Stok mevcudiyeti durumunda sesli uyarı çalar
 
 ## 🔧 API Endpoints
 
 - `GET /` - Ana sayfa
-- `GET /api/status` - Mevcut durum
-- `GET /api/history` - Geçmiş kayıtları
+- `GET /api/status` - Mevcut durum bilgisi
+- `GET /api/history` - Geçmiş veriler
 - `POST /api/manual-check` - Manuel kontrol
 
-## ⚙️ Yapılandırma
+## 🚀 Deployment
 
-- **Kontrol Sıklığı**: 5 dakika (app.py içinde değiştirilebilir)
-- **Veritabanı**: SQLite (tesla_monitor.db)
-- **Port**: 5001 (yerel), Render'da otomatik
+### Render'da Deploy Etme
 
-## 📁 Proje Yapısı
+1. **Render hesabı oluşturun** ve GitHub reponuzu bağlayın
+2. **Yeni Web Service** oluşturun
+3. **Build Command**: `pip install -r requirements.txt`
+4. **Start Command**: `gunicorn --worker-class eventlet -w 1 app:app`
+5. **Environment Variables**:
+   - `PORT`: `10000`
 
-```
-Teslat/
-├── app.py                 # Ana Flask uygulaması
-├── requirements.txt       # Python bağımlılıkları
-├── Procfile              # Render deployment
-├── render.yaml           # Render konfigürasyonu
-├── README.md             # Bu dosya
-├── templates/
-│   └── index.html        # Ana HTML şablonu
-├── static/
-│   ├── css/
-│   │   └── style.css     # CSS stilleri
-│   └── js/
-│       └── app.js        # JavaScript kodu
-└── tesla_monitor.db      # SQLite veritabanı (otomatik oluşur)
-```
+## 📝 Lisans
 
-## 🎮 Kullanım
+Bu proje MIT lisansı altında lisanslanmıştır.
 
-1. Web arayüzünde bağlantı durumunu kontrol edin
-2. "Manuel Kontrol" butonuna tıklayarak anlık kontrol yapın
-3. Bildirim geçmişini görüntüleyin
-4. Ses kontrollerini ayarlayın
+## 🤝 Katkıda Bulunma
 
-## 📝 Notlar
+1. Fork edin
+2. Feature branch oluşturun (`git checkout -b feature/AmazingFeature`)
+3. Commit edin (`git commit -m 'Add some AmazingFeature'`)
+4. Push edin (`git push origin feature/AmazingFeature`)
+5. Pull Request oluşturun
 
-- Tesla web sitesi bazen erişim engellemeleri yapabilir
-- Ücretsiz Render planında uygulama 15 dakika hareketsizlik sonrası uyku moduna geçer
-- İlk erişimde uygulama yeniden başlatılır (1-2 dakika sürebilir)
+## 📞 İletişim
 
-## 📄 Lisans
+- **Proje Sahibi**: [GitHub Profiliniz]
+- **Email**: [Email Adresiniz]
 
-MIT License 
+## 🙏 Teşekkürler
+
+- Tesla Türkiye
+- Flask ve Flask-SocketIO geliştiricileri
+- Render hosting platformu 

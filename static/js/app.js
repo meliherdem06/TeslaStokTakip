@@ -1,5 +1,5 @@
-// Tesla Model Y Monitor - Frontend Application
-class TeslaMonitor {
+// Tesla Stok Takip - Frontend Application
+class TeslaStokTakip {
     constructor() {
         this.socket = null;
         this.soundEnabled = true;
@@ -357,7 +357,7 @@ class TeslaMonitor {
 
 // Initialize the application when DOM is loaded
 document.addEventListener('DOMContentLoaded', () => {
-    new TeslaMonitor();
+    new TeslaStokTakip();
 });
 
 // Service Worker for offline functionality

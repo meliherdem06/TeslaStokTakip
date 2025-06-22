@@ -16,7 +16,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'tesla_monitor_secret_key'
+app.config['SECRET_KEY'] = 'tesla_stok_takip_secret_key'
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60, ping_interval=25)
 
 # Tesla Model Y URL - Try different URLs if one fails
@@ -29,7 +29,7 @@ TESLA_URLS = [
 
 # Database setup
 def init_db():
-    conn = sqlite3.connect('tesla_monitor.db')
+    conn = sqlite3.connect('tesla_stok_takip.db')
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS page_snapshots (
@@ -131,7 +131,7 @@ def save_snapshot(content, has_order_button, has_availability):
     content_hash = hashlib.md5(content.encode()).hexdigest()
     content_length = len(content)
     
-    conn = sqlite3.connect('tesla_monitor.db')
+    conn = sqlite3.connect('tesla_stok_takip.db')
     cursor = conn.cursor()
     cursor.execute('''
         INSERT INTO page_snapshots (content_hash, content_length, has_order_button, has_availability, raw_content)
@@ -156,7 +156,7 @@ def perform_check():
         content_hash = save_snapshot(content, has_order_button, has_availability)
         
         # Get previous snapshot for comparison
-        conn = sqlite3.connect('tesla_monitor.db')
+        conn = sqlite3.connect('tesla_stok_takip.db')
         cursor = conn.cursor()
         cursor.execute('''
             SELECT content_hash, has_order_button, has_availability 
@@ -249,7 +249,7 @@ def index():
 @app.route('/api/status')
 def get_status():
     """Get current monitoring status"""
-    conn = sqlite3.connect('tesla_monitor.db')
+    conn = sqlite3.connect('tesla_stok_takip.db')
     cursor = conn.cursor()
     cursor.execute('''
         SELECT timestamp, has_order_button, has_availability 
@@ -279,7 +279,7 @@ def get_status():
 @app.route('/api/history')
 def get_history():
     """Get monitoring history"""
-    conn = sqlite3.connect('tesla_monitor.db')
+    conn = sqlite3.connect('tesla_stok_takip.db')
     cursor = conn.cursor()
     cursor.execute('''
         SELECT timestamp, has_order_button, has_availability 
@@ -333,7 +333,7 @@ def manual_check():
 @socketio.on('connect')
 def handle_connect():
     print('Client connected')
-    emit('status', {'message': 'Connected to Tesla Monitor'})
+    emit('status', {'message': 'Connected to Tesla Stok Takip'})
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -343,7 +343,7 @@ if __name__ == '__main__':
     # Get port from environment variable (for web deployment)
     port = int(os.environ.get('PORT', 5001))
     
-    print(f"Teslat starting on port {port}")
+    print(f"TeslaStokTakip starting on port {port}")
     print(f"Tesla URLs: {TESLA_URLS}")
     
     # Start Flask app
