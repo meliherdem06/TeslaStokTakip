@@ -2,7 +2,6 @@ from flask import Flask, render_template, jsonify, request
 import requests
 from bs4 import BeautifulSoup
 import sqlite3
-import schedule
 import threading
 import time
 from datetime import datetime
