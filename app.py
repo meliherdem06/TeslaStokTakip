@@ -35,7 +35,7 @@ TESLA_URLS = [
 ]
 
 # Test mode - when Tesla website is unreachable
-TEST_MODE = False
+TEST_MODE = True
 
 # Database setup
 def init_db():
