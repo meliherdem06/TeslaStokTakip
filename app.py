@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from apscheduler.schedulers.background import BackgroundScheduler
 import warnings
 import random
+import cloudscraper
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -39,14 +40,6 @@ TESLA_URLS = [
     'https://www.tesla.com/tr_tr/modely/design#overview'
 ]
 
-# Headers for requests
-USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0',
-    'Mozilla/5.0 (X11; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0'
-]
-
 # Database setup
 def init_db():
     """Initialize database with tables"""
@@ -68,23 +61,18 @@ def init_db():
     print("Database initialized")
 
 def get_page_content():
-    """Fetch Tesla Model Y page content with rotating user-agents."""
-    headers = {
-        'User-Agent': random.choice(USER_AGENTS),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-    }
+    """Fetch Tesla Model Y page content with cloudscraper to bypass bot detection."""
     
-    print(f"Trying Tesla URLs with User-Agent: {headers['User-Agent']}")
+    scraper = cloudscraper.create_scraper()  # Use cloudscraper
+
+    print(f"Trying Tesla URLs with cloudscraper...")
     timeouts = [15, 25, 35]
     
     for url in TESLA_URLS:
         for timeout in timeouts:
             try:
                 print(f"Trying URL: {url} with timeout: {timeout}s")
-                session = requests.Session()
-                session.headers.update(headers)
-                response = session.get(url, timeout=timeout, verify=False, allow_redirects=True)
+                response = scraper.get(url, timeout=timeout, verify=False, allow_redirects=True)
                 response.raise_for_status()
                 print(f"Page fetched successfully from {url}")
                 return response.text
