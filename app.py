@@ -36,6 +36,7 @@ TESLA_URLS = [
 
 # Test mode - when Tesla website is unreachable
 TEST_MODE = True
+CURRENT_TEST_SCENARIO = 'no_stock'  # Default scenario
 
 # Database setup
 def init_db():
@@ -57,15 +58,11 @@ def init_db():
 
 def get_test_content():
     """Generate test content when Tesla website is unreachable"""
-    import random
-    import time
+    global CURRENT_TEST_SCENARIO
     
-    # Get current timestamp to make scenarios more predictable
-    current_time = int(time.time())
-    
-    # Simulate different scenarios - mostly no stock, occasionally stock available
-    scenarios = [
-        {
+    # Define test scenarios
+    scenarios = {
+        'no_stock': {
             'content': '''
             <html>
             <body>
@@ -73,14 +70,15 @@ def get_test_content():
                 <p>Şu anda stokta değil</p>
                 <div>Bilgi alın</div>
                 <span>Stok durumu: Mevcut değil</span>
+                <p>Güncellemeleri al</p>
             </body>
             </html>
             ''',
             'has_order': False,
             'has_stock': False,
-            'description': 'Stok yok - Sipariş yok'
+            'description': 'Stok yok - Sipariş yok (Gerçek durum)'
         },
-        {
+        'pre_order': {
             'content': '''
             <html>
             <body>
@@ -95,26 +93,7 @@ def get_test_content():
             'has_stock': False,
             'description': 'Ön sipariş mevcut - Stok yok'
         },
-        {
-            'content': '''
-            <html>
-            <body>
-                <h1>Tesla Model Y</h1>
-                <p>Şu anda stokta değil</p>
-                <div>Bilgi alın</div>
-                <span>Stok durumu: Mevcut değil</span>
-            </body>
-            </html>
-            ''',
-            'has_order': False,
-            'has_stock': False,
-            'description': 'Stok yok - Sipariş yok'
-        }
-    ]
-    
-    # Add stock available scenario only occasionally (10% chance)
-    if current_time % 10 == 0:  # Every 10 seconds, 10% chance
-        scenarios.append({
+        'stock_available': {
             'content': '''
             <html>
             <body>
@@ -129,11 +108,11 @@ def get_test_content():
             'has_order': True,
             'has_stock': True,
             'description': 'STOK MEVCUT! - Sipariş mevcut'
-        })
+        }
+    }
     
-    # Select scenario based on time to make it more predictable
-    scenario_index = current_time % len(scenarios)
-    scenario = scenarios[scenario_index]
+    # Get the current scenario
+    scenario = scenarios.get(CURRENT_TEST_SCENARIO, scenarios['no_stock'])
     
     print(f"Test mode: {scenario['description']}")
     return scenario['content'], scenario['has_order'], scenario['has_stock']
@@ -508,7 +487,7 @@ def get_test_mode_status():
 @app.route('/api/test-scenario', methods=['POST'])
 def set_test_scenario():
     """Set specific test scenario for testing"""
-    global TEST_MODE
+    global TEST_MODE, CURRENT_TEST_SCENARIO
     try:
         data = request.get_json()
         if data and 'scenario' in data:
@@ -516,9 +495,9 @@ def set_test_scenario():
             
             # Force test mode to be enabled
             TEST_MODE = True
+            CURRENT_TEST_SCENARIO = scenario
             
-            # Store the requested scenario (you can implement this if needed)
-            print(f"Test scenario requested: {scenario}")
+            print(f"Test scenario set to: {scenario}")
             
             return jsonify({
                 'success': True,
