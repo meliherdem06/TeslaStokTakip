@@ -537,4 +537,70 @@ body {
 
 @keyframes spin {
     to { transform: rotate(360deg); }
+}
+
+/* Test Scenarios */
+.test-scenarios {
+    border-top: 1px solid #e0e0e0;
+    padding-top: 15px;
+}
+
+.test-scenarios h4 {
+    margin-bottom: 10px;
+    color: #666;
+    font-size: 14px;
+}
+
+.scenario-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.scenario-buttons .btn {
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 6px;
+}
+
+.scenario-buttons .btn-outline-danger {
+    color: #dc3545;
+    border-color: #dc3545;
+}
+
+.scenario-buttons .btn-outline-danger:hover {
+    background-color: #dc3545;
+    color: white;
+}
+
+.scenario-buttons .btn-outline-warning {
+    color: #ffc107;
+    border-color: #ffc107;
+}
+
+.scenario-buttons .btn-outline-warning:hover {
+    background-color: #ffc107;
+    color: #212529;
+}
+
+.scenario-buttons .btn-outline-success {
+    color: #28a745;
+    border-color: #28a745;
+}
+
+.scenario-buttons .btn-outline-success:hover {
+    background-color: #28a745;
+    color: white;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .scenario-buttons {
+        flex-direction: column;
+    }
+    
+    .scenario-buttons .btn {
+        width: 100%;
+        margin-bottom: 5px;
+    }
 } 
